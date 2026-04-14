@@ -41,7 +41,8 @@ function parseXyz(content) {
     let atomIndex = 0;
     for (let i = startLine; i < Math.min(startLine + atomCount, lines.length); i++) {
         const line = lines[i].trim();
-        if (line === '') continue;
+        if (line === '')
+            continue;
         const parts = line.split(/\s+/);
         if (parts.length >= 4) {
             const element = resolveElement(parts[0]);
@@ -56,3 +57,4 @@ function parseXyz(content) {
     }
     return { atoms, bonds, title, hasExplicitBonds: false };
 }
+//# sourceMappingURL=xyzParser.js.map

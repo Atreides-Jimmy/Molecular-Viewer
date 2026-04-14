@@ -32,3 +32,4 @@ function tryAutoParse(content) {
     }
     return (0, xyzParser_1.parseXyz)(content);
 }
+//# sourceMappingURL=index.js.map

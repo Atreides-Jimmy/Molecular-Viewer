@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ensureBonds = ensureBonds;
 exports.detectBonds = detectBonds;
+exports.ensureBonds = ensureBonds;
 const COVALENT_RADII = {
     H: 0.31, He: 0.28,
     Li: 1.28, Be: 0.96, B: 0.84, C: 0.76, N: 0.71, O: 0.66, F: 0.57, Ne: 0.58,
@@ -54,5 +54,10 @@ function ensureBonds(data) {
         return data;
     }
     const bonds = detectBonds(data.atoms);
-    return { ...data, bonds, hasExplicitBonds: false };
+    return {
+        ...data,
+        bonds,
+        hasExplicitBonds: false
+    };
 }
+//# sourceMappingURL=bondDetector.js.map

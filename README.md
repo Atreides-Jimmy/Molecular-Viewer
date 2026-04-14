@@ -1,6 +1,6 @@
 # Molecular Viewer
 
-A VS Code / Trae extension for visualizing molecular structures in 3D, designed for computational chemists working with Gaussian, ORCA, and other quantum chemistry software — especially on remote servers where GUI tools like GaussView are unavailable.
+A VS Code / Trae extension for visualizing and editing molecular structures in 3D, designed for computational chemists working with Gaussian, ORCA, and other quantum chemistry software — especially on remote servers where GUI tools like GaussView are unavailable.
 
 ## Features
 
@@ -16,6 +16,16 @@ A VS Code / Trae extension for visualizing molecular structures in 3D, designed 
 - **Touch Support** — Single-finger rotate, pinch-to-zoom
 - **Remote-SSH Compatible** — Works seamlessly when editing files on remote Linux servers via VS Code/Trae Remote-SSH
 
+### Molecular Editing
+
+- **Bond Length Adjustment** — Select 2 atoms, view current bond length, choose which atom to fix, adjust via numeric input or slider with real-time 3D preview
+- **Bond Angle Adjustment** — Select 3 atoms (2nd is the vertex), view current angle, fix/move either side, real-time preview
+- **Dihedral Angle Adjustment** — Select 4 atoms, view current dihedral, fix/move either side, real-time preview
+- **Add Atom** — Click anchor atom, choose element (H/C/N/O/F/P/S/Cl/Br/I), set bond length, direction auto-calculated from existing bonds
+- **Delete Atom** — Click atom and confirm; atoms and bonds are automatically re-indexed
+- **Save As** — Export modified structure as XYZ or Gaussian GJF format (original file is never modified)
+- **Cancel/Undo** — Cancel button restores original coordinates before confirming edits
+
 ### Supported File Formats
 
 | Format | Extension | Notes |
@@ -29,7 +39,7 @@ A VS Code / Trae extension for visualizing molecular structures in 3D, designed 
 
 ### From VSIX (Recommended)
 
-1. Download the latest `.vsix` file from [Releases](https://github.com/YOUR_USERNAME/molecular-viewer/releases)
+1. Download the latest `.vsix` file from [Releases](https://github.com/Atreides-Jimmy/molecular-viewer/releases)
 2. In VS Code / Trae, press `Ctrl+Shift+P`
 3. Type `Extensions: Install from VSIX...`
 4. Select the downloaded `.vsix` file
@@ -38,7 +48,7 @@ A VS Code / Trae extension for visualizing molecular structures in 3D, designed 
 ### From Source
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/molecular-viewer.git
+git clone https://github.com/Atreides-Jimmy/molecular-viewer.git
 cd molecular-viewer
 npm install
 npm run compile
@@ -78,6 +88,16 @@ Add to your `settings.json`:
 | Hover over atom | Show element + coordinates tooltip |
 | Reset View button | Return to default view |
 
+### Editing Workflow
+
+1. Click a toolbar button to enter an editing mode (e.g., **Bond Length**)
+2. Click atoms in the 3D view to select them (selected atoms glow yellow)
+3. A modal dialog appears showing the current value
+4. Choose which atoms to **fix** vs. **move** using the dropdown
+5. Adjust the value using the **numeric input** or **slider** — the 3D view updates in real-time
+6. Click **OK** to confirm the change, or **Cancel** to revert
+7. Use **Save As** to export the modified structure to a new file
+
 ## Architecture
 
 ```
@@ -87,11 +107,12 @@ Add to your `settings.json`:
 │  Trae IDE (UI)      │          │  Trae Server (Extension) │
 │  ├─ Webview 3D      │ <─────── │  ├─ Parse .gjf/.xyz     │
 │  ├─ Three.js (CDN)  │  data    │  ├─ Bond detection       │
+│  ├─ Editing UI      │          │  ├─ Save file (VS Code)  │
 │  └─ Mouse events    │          │  └─ Return molecule data  │
 └─────────────────────┘          └──────────────────────────┘
 ```
 
-The extension runs on the **remote side** (reading files, parsing), while the Webview renders on the **local side** (Three.js via CDN, mouse interaction).
+The extension runs on the **remote side** (reading files, parsing, saving), while the Webview renders on the **local side** (Three.js via CDN, mouse interaction, editing UI).
 
 ## Project Structure
 
@@ -106,7 +127,8 @@ molecular-viewer/
 │   │   ├── xyzParser.ts       # XYZ format parser
 │   │   └── bondDetector.ts    # Covalent radii bond detection
 │   └── webview/
-│       └── molecularViewer.ts # Custom editor + Three.js webview
+│       └── molecularViewer.ts # Custom editor + Three.js webview + editing
+├── dist/                      # Compiled JavaScript (pre-built)
 ├── test/                      # Sample molecular files
 ├── media/                     # Extension icon
 ├── package.json
@@ -137,13 +159,13 @@ npm run package
 
 - [ ] MOL/SDF full parser with explicit bond info
 - [ ] CIF crystal structure support
-- [ ] Measure distances, angles, dihedrals
-- [ ] Atom selection and highlighting
 - [ ] Multiple display styles (wireframe, space-filling, licorice)
 - [ ] Vibration animation from frequency calculations
 - [ ] ORCA output parser
 - [ ] Gaussian log/fchk parser (optimized geometries)
 - [ ] Export as PNG/SVG
+- [ ] Undo/redo history for edits
+- [ ] Bond order editing (single ↔ double ↔ triple)
 
 ## Contributing
 

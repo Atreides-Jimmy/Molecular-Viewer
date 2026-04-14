@@ -35,17 +35,30 @@ function parseGjf(content) {
     let title = '';
     let hasExplicitBonds = false;
     let i = 0;
-    while (i < lines.length && lines[i].trim() !== '') { i++; }
-    while (i < lines.length && lines[i].trim() === '') { i++; }
+    while (i < lines.length && lines[i].trim() !== '') {
+        i++;
+    }
+    while (i < lines.length && lines[i].trim() === '') {
+        i++;
+    }
     const titleParts = [];
-    while (i < lines.length && lines[i].trim() !== '') { titleParts.push(lines[i].trim()); i++; }
+    while (i < lines.length && lines[i].trim() !== '') {
+        titleParts.push(lines[i].trim());
+        i++;
+    }
     title = titleParts.join(' ');
-    while (i < lines.length && lines[i].trim() === '') { i++; }
-    if (i < lines.length) { i++; }
+    while (i < lines.length && lines[i].trim() === '') {
+        i++;
+    }
+    if (i < lines.length) {
+        i++;
+    }
     let atomIndex = 0;
     while (i < lines.length) {
         const line = lines[i].trim();
-        if (line === '' || line.startsWith('--')) { break; }
+        if (line === '' || line.startsWith('--')) {
+            break;
+        }
         const parts = line.split(/\s+/);
         if (parts.length >= 4) {
             const element = resolveElement(parts[0]);
@@ -59,7 +72,9 @@ function parseGjf(content) {
         }
         i++;
     }
-    while (i < lines.length && lines[i].trim() === '') { i++; }
+    while (i < lines.length && lines[i].trim() === '') {
+        i++;
+    }
     if (i < lines.length) {
         const remaining = lines.slice(i).join('\n');
         const connectMatch = remaining.match(/connect\s*\n([\s\S]*?)(?:\n\s*\n|\n--|$)/i);
@@ -68,27 +83,36 @@ function parseGjf(content) {
             const connectLines = connectMatch[1].split(/\r?\n/);
             for (const cl of connectLines) {
                 const trimmed = cl.trim();
-                if (trimmed === '') continue;
+                if (trimmed === '')
+                    continue;
                 const cparts = trimmed.split(/\s+/);
-                if (cparts.length < 2) continue;
+                if (cparts.length < 2)
+                    continue;
                 const atom1 = parseInt(cparts[0], 10) - 1;
-                if (isNaN(atom1) || atom1 < 0) continue;
+                if (isNaN(atom1) || atom1 < 0)
+                    continue;
                 let j = 1;
                 while (j + 1 < cparts.length) {
                     const atom2 = parseInt(cparts[j], 10) - 1;
                     const bondOrder = parseFloat(cparts[j + 1]) || 1;
                     const order = Math.max(1, Math.min(3, Math.round(bondOrder)));
                     if (!isNaN(atom2) && atom2 >= 0 && atom1 !== atom2) {
-                        const exists = bonds.some(b => (b.atom1 === atom1 && b.atom2 === atom2) || (b.atom1 === atom2 && b.atom2 === atom1));
-                        if (!exists) { bonds.push({ atom1, atom2, order }); }
+                        const exists = bonds.some(b => (b.atom1 === atom1 && b.atom2 === atom2) ||
+                            (b.atom1 === atom2 && b.atom2 === atom1));
+                        if (!exists) {
+                            bonds.push({ atom1, atom2, order });
+                        }
                     }
                     j += 2;
                 }
                 if (cparts.length === 2) {
                     const atom2 = parseInt(cparts[1], 10) - 1;
                     if (!isNaN(atom2) && atom2 >= 0 && atom1 !== atom2) {
-                        const exists = bonds.some(b => (b.atom1 === atom1 && b.atom2 === atom2) || (b.atom1 === atom2 && b.atom2 === atom1));
-                        if (!exists) { bonds.push({ atom1, atom2, order: 1 }); }
+                        const exists = bonds.some(b => (b.atom1 === atom1 && b.atom2 === atom2) ||
+                            (b.atom1 === atom2 && b.atom2 === atom1));
+                        if (!exists) {
+                            bonds.push({ atom1, atom2, order: 1 });
+                        }
                     }
                 }
             }
@@ -96,3 +120,4 @@ function parseGjf(content) {
     }
     return { atoms, bonds, title, hasExplicitBonds };
 }
+//# sourceMappingURL=gjfParser.js.map
