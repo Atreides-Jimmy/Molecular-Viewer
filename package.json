@@ -1,0 +1,113 @@
+{
+  "name": "molecular-viewer",
+  "displayName": "Molecular Viewer",
+  "description": "3D molecular structure viewer for computational chemistry files (Gaussian .gjf, .xyz, .mol, .sdf). Features ball-and-stick rendering, auto bond detection, and interactive rotation/zoom — like GaussView in your IDE.",
+  "version": "0.1.0",
+  "publisher": "molecular-viewer",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Atreides-Jimmy/molecular-viewer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Atreides-Jimmy/molecular-viewer/issues"
+  },
+  "homepage": "https://github.com/Atreides-Jimmy/molecular-viewer#readme",
+  "keywords": [
+    "chemistry",
+    "molecular",
+    "3d",
+    "gaussian",
+    "gjf",
+    "xyz",
+    "visualization",
+    "computational chemistry",
+    "gaussview",
+    "molecule"
+  ],
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Visualization",
+    "Science"
+  ],
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
+  "activationEvents": [
+    "onCustomEditor:molecularViewer.editor",
+    "onCommand:molecularViewer.openViewer"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "molecularViewer.openViewer",
+        "title": "Molecular Viewer: Open 3D Viewer",
+        "icon": "$(eye)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "molecularViewer.openViewer",
+          "when": "resourceExtname == .gjf || resourceExtname == .xyz || resourceExtname == .mol || resourceExtname == .sdf || resourceExtname == .com || resourceExtname == .gjf03 || resourceExtname == .gjf09 || resourceExtname == .gjf16",
+          "group": "navigation"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "molecularViewer.openViewer",
+          "when": "resourceExtname == .gjf || resourceExtname == .xyz || resourceExtname == .mol || resourceExtname == .sdf || resourceExtname == .com || resourceExtname == .gjf03 || resourceExtname == .gjf09 || resourceExtname == .gjf16",
+          "group": "navigation"
+        }
+      ]
+    },
+    "customEditors": [
+      {
+        "viewType": "molecularViewer.editor",
+        "displayName": "Molecular 3D Viewer",
+        "selector": [
+          {
+            "filenamePattern": "*.gjf"
+          },
+          {
+            "filenamePattern": "*.xyz"
+          },
+          {
+            "filenamePattern": "*.mol"
+          },
+          {
+            "filenamePattern": "*.sdf"
+          },
+          {
+            "filenamePattern": "*.com"
+          },
+          {
+            "filenamePattern": "*.gjf03"
+          },
+          {
+            "filenamePattern": "*.gjf09"
+          },
+          {
+            "filenamePattern": "*.gjf16"
+          }
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --no-dependencies",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "@types/node": "^18.0.0",
+    "typescript": "^5.0.0"
+  }
+}
