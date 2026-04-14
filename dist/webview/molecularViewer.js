@@ -86,6 +86,7 @@ class MolecularViewerProvider {
     }
     getHtmlForWebview(webview, data) {
         const nonce = getNonce();
+        const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'three.min.js'));
         const atomColors = {
             H: '#FFFFFF', He: '#D9FFFF', Li: '#CC80FF', Be: '#C2FF00', B: '#FFB5B5',
             C: '#909090', N: '#3050F8', O: '#FF0D0D', F: '#90E050', Ne: '#B3E3F5',
@@ -123,18 +124,19 @@ class MolecularViewerProvider {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' https://cdnjs.cloudflare.com; style-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' ${webview.cspSource}; style-src 'nonce-${nonce}';">
 <title>Molecular Viewer</title>
 <style nonce="${nonce}">
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{width:100%;height:100%;overflow:hidden;background:var(--vscode-editor-background,#1e1e1e);font-family:var(--vscode-font-family,sans-serif);color:var(--vscode-editor-foreground,#ccc)}
-#toolbar{position:absolute;top:0;left:0;right:0;height:36px;background:var(--vscode-editor-background,#1e1e1e);border-bottom:1px solid var(--vscode-panel-border,#444);display:flex;align-items:center;padding:0 8px;z-index:20;gap:2px}
+html{width:100%;height:100%;overflow:hidden}
+body{width:100%;height:100%;overflow:hidden;display:flex;flex-direction:column;background:var(--vscode-editor-background,#1e1e1e);font-family:var(--vscode-font-family,sans-serif);color:var(--vscode-editor-foreground,#ccc)}
+#toolbar{height:36px;flex-shrink:0;background:var(--vscode-editor-background,#1e1e1e);border-bottom:1px solid var(--vscode-panel-border,#444);display:flex;align-items:center;padding:0 8px;z-index:20;gap:2px}
 .tbtn{background:var(--vscode-button-secondaryBackground,#3a3d41);color:var(--vscode-button-secondaryForeground,#fff);border:1px solid var(--vscode-panel-border,#444);padding:3px 10px;border-radius:3px;cursor:pointer;font-size:11px;white-space:nowrap}
 .tbtn:hover{background:var(--vscode-button-secondaryHoverBackground,#45494e)}
 .tbtn.active{background:var(--vscode-button-background,#0e639c);border-color:var(--vscode-button-background,#0e639c)}
 .tsep{width:1px;height:20px;background:var(--vscode-panel-border,#444);margin:0 4px}
-#status-bar{position:absolute;top:36px;left:0;right:0;height:24px;background:var(--vscode-statusBar-background,#007acc);color:var(--vscode-statusBar-foreground,#fff);display:flex;align-items:center;padding:0 10px;font-size:11px;z-index:20;gap:12px}
-#container{position:absolute;top:60px;left:0;right:0;bottom:0}
+#status-bar{height:24px;flex-shrink:0;background:var(--vscode-statusBar-background,#007acc);color:var(--vscode-statusBar-foreground,#fff);display:flex;align-items:center;padding:0 10px;font-size:11px;z-index:20;gap:12px}
+#container{flex:1;position:relative;overflow:hidden;min-height:0}
 canvas{display:block}
 #atom-tooltip{position:absolute;display:none;color:var(--vscode-editor-foreground,#ccc);font-size:12px;background:var(--vscode-editor-background,#1e1e1e);padding:4px 8px;border-radius:3px;border:1px solid var(--vscode-panel-border,#444);pointer-events:none;z-index:30}
 #modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:100;display:none;align-items:center;justify-content:center}
@@ -153,7 +155,9 @@ canvas{display:block}
 #modal .mbtn-ok:hover{background:var(--vscode-button-hoverBackground,#1177bb)}
 #modal .mbtn-cancel{background:var(--vscode-button-secondaryBackground,#3a3d41);color:var(--vscode-button-secondaryForeground,#fff)}
 #modal .mbtn-cancel:hover{background:var(--vscode-button-secondaryHoverBackground,#45494e)}
+#modal .mbtn-danger{background:#c33;border-color:#c33;color:#fff}
 #modal .current-val{font-size:13px;color:var(--vscode-descriptionForeground,#999);margin-bottom:6px}
+#error-msg{display:none;color:#f66;padding:20px;font-size:13px}
 </style>
 </head>
 <body>
@@ -171,24 +175,36 @@ canvas{display:block}
 </div>
 <div id="status-bar"><span id="mode-info">View Mode</span><span id="selection-info"></span></div>
 <div id="container"></div>
+<div id="error-msg"></div>
 <div id="atom-tooltip"></div>
 <div id="modal-overlay"><div id="modal"></div></div>
-<script nonce="${nonce}" src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script nonce="${nonce}" src="${scriptUri}"></script>
 <script nonce="${nonce}">
 (function(){
 var MD=${jsonData};
 var container=document.getElementById('container');
+var errorEl=document.getElementById('error-msg');
 var tooltipEl=document.getElementById('atom-tooltip');
 var modeInfoEl=document.getElementById('mode-info');
 var selInfoEl=document.getElementById('selection-info');
 var modalOverlay=document.getElementById('modal-overlay');
 var modalEl=document.getElementById('modal');
+var vscodeApi=acquireVsCodeApi();
+
+function showError(msg){errorEl.style.display='block';errorEl.textContent=msg}
+
+if(typeof THREE==='undefined'){showError('Failed to load Three.js library. Please check your internet connection (cdnjs.cloudflare.com).');return}
+
+var cw=container.clientWidth||window.innerWidth;
+var ch=container.clientHeight||(window.innerHeight-60);
+if(ch<1)ch=window.innerHeight-60;
+if(cw<1)cw=window.innerWidth;
 
 var scene=new THREE.Scene();
 scene.background=new THREE.Color(0x1e1e1e);
-var camera=new THREE.PerspectiveCamera(60,container.clientWidth/container.clientHeight,0.1,1000);
+var camera=new THREE.PerspectiveCamera(60,cw/ch,0.1,1000);
 var renderer=new THREE.WebGLRenderer({antialias:true});
-renderer.setSize(container.clientWidth,container.clientHeight);
+renderer.setSize(cw,ch);
 renderer.setPixelRatio(window.devicePixelRatio);
 container.appendChild(renderer.domElement);
 
@@ -555,7 +571,7 @@ function showDeleteAtomModal(){
     var name=a.element+(idx+1);
     showModal('<h3>Delete Atom</h3>'+
         '<div class="current-val">Delete '+name+'?</div>'+
-        '<div class="modal-btns"><button class="mbtn mbtn-cancel" id="m-cancel">Cancel</button><button class="mbtn mbtn-ok" id="m-ok" style="background:#c33;border-color:#c33">Delete</button></div>',null);
+        '<div class="modal-btns"><button class="mbtn mbtn-cancel" id="m-cancel">Cancel</button><button class="mbtn mbtn-ok mbtn-danger" id="m-ok">Delete</button></div>',null);
     document.getElementById('m-ok').addEventListener('click',function(){
         MD.atoms.splice(idx,1);
         MD.atoms.forEach(function(a,i){a.index=i});
@@ -580,8 +596,7 @@ function doSave(){
         var fmt=document.getElementById('m-fmt').value;
         var content=fmt==='gjf'?gjf:xyz;
         var ext=fmt==='gjf'?'.gjf':'.xyz';
-        var VSCode=acquireVsCodeApi();
-        VSCode.postMessage({command:'saveFile',content:content,suggestedName:'molecule_modified'+ext});
+        vscodeApi.postMessage({command:'saveFile',content:content,suggestedName:'molecule_modified'+ext});
         hideModal();
     });
     document.getElementById('m-cancel').addEventListener('click',function(){hideModal()});
@@ -652,7 +667,7 @@ canvas.addEventListener('touchmove',function(e){e.preventDefault();
 },{passive:false});
 canvas.addEventListener('touchend',function(e){isRot=false;if(e.touches.length<2)touchSD=0});
 
-window.addEventListener('resize',function(){camera.aspect=container.clientWidth/container.clientHeight;camera.updateProjectionMatrix();renderer.setSize(container.clientWidth,container.clientHeight)});
+window.addEventListener('resize',function(){var rw=container.clientWidth||window.innerWidth;var rh=container.clientHeight||(window.innerHeight-60);if(rw<1)rw=window.innerWidth;if(rh<1)rh=window.innerHeight-60;camera.aspect=rw/rh;camera.updateProjectionMatrix();renderer.setSize(rw,rh)});
 
 function animate(){requestAnimationFrame(animate);renderer.render(scene,camera)}
 animate();

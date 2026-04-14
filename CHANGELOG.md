@@ -1,5 +1,24 @@
 # Change Log
 
+## [0.2.2] - 2026-04-14
+
+### Fixed
+
+- **Black screen root cause: Three.js CDN unreachable** — Bundled Three.js r128 locally in `media/three.min.js` instead of loading from cdnjs.cloudflare.com, which is often blocked or slow in China and corporate networks
+- **Local resource loading** — Changed script loading to use `webview.asWebviewUri()` for reliable local file access, compatible with both local and Remote-SSH scenarios
+- **CSP updated** — Replaced `https://cdnjs.cloudflare.com` in Content Security Policy with `webview.cspSource` for proper local resource authorization
+
+## [0.2.1] - 2026-04-14
+
+### Fixed
+
+- **Black screen on startup** — Changed layout from absolute positioning to CSS flexbox for the toolbar, status bar, and 3D container, ensuring the container always has correct dimensions
+- **Container dimension fallback** — Added fallback to `window.innerWidth/innerHeight` when `container.clientWidth/clientHeight` is 0, preventing Three.js renderer from creating a 0×0 canvas
+- **Three.js load check** — Added check for `THREE` undefined with visible error message when CDN fails to load
+- **`acquireVsCodeApi()` multiple call bug** — Moved API acquisition to top-level (once per session) instead of inside `doSave()`, preventing error on second Save As click
+- **CSP inline style violation** — Replaced inline `style="background:#c33"` on Delete button with CSS class `.mbtn-danger`, complying with Content Security Policy
+- **Error display element** — Added `#error-msg` element for showing runtime errors to users instead of silent black screen
+
 ## [0.2.0] - 2026-04-14
 
 ### Added
