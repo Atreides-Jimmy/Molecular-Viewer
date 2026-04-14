@@ -1,5 +1,15 @@
 # Change Log
 
+## [0.3.0] - 2026-04-14
+
+### Fixed
+
+- **Black screen root cause (final fix): Three.js now inlined into HTML** — Instead of loading Three.js as an external file (which failed due to CDN unreachability and local file loading issues in webviews), the library is now read at runtime and embedded directly into the HTML. This eliminates ALL script loading failures regardless of network, CSP, or webview configuration
+- **CSP simplified** — `script-src` no longer needs external domains or `webview.cspSource`; only `'nonce-xxx'` is required since Three.js is inline
+- **Visible loading indicator** — Shows "Loading 3D Viewer..." text while initializing, so users know the webview is working
+- **Comprehensive error handling** — Added `try/catch` around entire initialization; any JavaScript error now displays a visible red error message instead of a silent black screen
+- **Loading state management** — Loading indicator is hidden once Three.js renderer is created; error messages properly hide the loading indicator
+
 ## [0.2.2] - 2026-04-14
 
 ### Fixed

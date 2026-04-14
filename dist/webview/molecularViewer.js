@@ -53,7 +53,7 @@ class MolecularViewerProvider {
         webviewPanel.webview.options = {
             enableScripts: true,
         };
-        webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview, document.data);
+        webviewPanel.webview.html = await this.getHtmlForWebview(webviewPanel.webview, document.data);
         webviewPanel.webview.onDidReceiveMessage(async (message) => {
             switch (message.command) {
                 case 'saveFile':
@@ -84,9 +84,10 @@ class MolecularViewerProvider {
             }
         });
     }
-    getHtmlForWebview(webview, data) {
+    async getHtmlForWebview(webview, data) {
         const nonce = getNonce();
-        const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'three.min.js'));
+        const threeJsBytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'three.min.js'));
+        const threeJsContent = new TextDecoder().decode(threeJsBytes);
         const atomColors = {
             H: '#FFFFFF', He: '#D9FFFF', Li: '#CC80FF', Be: '#C2FF00', B: '#FFB5B5',
             C: '#909090', N: '#3050F8', O: '#FF0D0D', F: '#90E050', Ne: '#B3E3F5',
@@ -124,7 +125,7 @@ class MolecularViewerProvider {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' ${webview.cspSource}; style-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}';">
 <title>Molecular Viewer</title>
 <style nonce="${nonce}">
 *{margin:0;padding:0;box-sizing:border-box}
@@ -157,7 +158,8 @@ canvas{display:block}
 #modal .mbtn-cancel:hover{background:var(--vscode-button-secondaryHoverBackground,#45494e)}
 #modal .mbtn-danger{background:#c33;border-color:#c33;color:#fff}
 #modal .current-val{font-size:13px;color:var(--vscode-descriptionForeground,#999);margin-bottom:6px}
-#error-msg{display:none;color:#f66;padding:20px;font-size:13px}
+#loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--vscode-editor-foreground,#ccc);font-size:14px}
+#error-msg{display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#f66;padding:20px;font-size:13px;text-align:center;max-width:80%;z-index:50}
 </style>
 </head>
 <body>
@@ -174,15 +176,19 @@ canvas{display:block}
 <button class="tbtn" id="reset-btn">Reset View</button>
 </div>
 <div id="status-bar"><span id="mode-info">View Mode</span><span id="selection-info"></span></div>
-<div id="container"></div>
+<div id="container"><div id="loading">Loading 3D Viewer...</div></div>
 <div id="error-msg"></div>
 <div id="atom-tooltip"></div>
 <div id="modal-overlay"><div id="modal"></div></div>
-<script nonce="${nonce}" src="${scriptUri}"></script>
+<script nonce="${nonce}">
+${threeJsContent}
+</script>
 <script nonce="${nonce}">
 (function(){
+try{
 var MD=${jsonData};
 var container=document.getElementById('container');
+var loadingEl=document.getElementById('loading');
 var errorEl=document.getElementById('error-msg');
 var tooltipEl=document.getElementById('atom-tooltip');
 var modeInfoEl=document.getElementById('mode-info');
@@ -191,9 +197,9 @@ var modalOverlay=document.getElementById('modal-overlay');
 var modalEl=document.getElementById('modal');
 var vscodeApi=acquireVsCodeApi();
 
-function showError(msg){errorEl.style.display='block';errorEl.textContent=msg}
+function showError(msg){if(loadingEl)loadingEl.style.display='none';errorEl.style.display='block';errorEl.textContent=msg}
 
-if(typeof THREE==='undefined'){showError('Failed to load Three.js library. Please check your internet connection (cdnjs.cloudflare.com).');return}
+if(typeof THREE==='undefined'){showError('Three.js library failed to load. Please reinstall the extension.');return}
 
 var cw=container.clientWidth||window.innerWidth;
 var ch=container.clientHeight||(window.innerHeight-60);
@@ -207,6 +213,7 @@ var renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(cw,ch);
 renderer.setPixelRatio(window.devicePixelRatio);
 container.appendChild(renderer.domElement);
+if(loadingEl)loadingEl.style.display='none';
 
 scene.add(new THREE.AmbientLight(0x404040,1.5));
 var dl1=new THREE.DirectionalLight(0xffffff,0.8);dl1.position.set(5,10,7);scene.add(dl1);
@@ -285,18 +292,19 @@ function hBond(s,e,d,hl,r,c){
     bondMeshes.push(mesh);
 }
 
+var isRot=false,isPan=false,prevM={x:0,y:0},rotX=0,rotY=0,panX=0,panY=0,camDist=10;
+var currentMode='view';
+var selectedAtoms=[];
+var originalCoords=null;
+var modalCallback=null;
+
 rebuildScene();
 
 var maxD=0;
 MD.atoms.forEach(function(a){var dx=a.x-CX,dy=a.y-CY,dz=a.z-CZ,dd=Math.sqrt(dx*dx+dy*dy+dz*dz);if(dd>maxD)maxD=dd});
 var initCam=maxD*2.5+5;
 camera.position.set(0,0,initCam);camera.lookAt(0,0,0);
-
-var isRot=false,isPan=false,prevM={x:0,y:0},rotX=0,rotY=0,panX=0,panY=0,camDist=initCam;
-var currentMode='view';
-var selectedAtoms=[];
-var originalCoords=null;
-var modalCallback=null;
+camDist=initCam;
 
 var MODE_INFO={view:'View Mode',bondLength:'Bond Length - Click 2 atoms',bondAngle:'Bond Angle - Click 3 atoms (central 2nd)',dihedral:'Dihedral - Click 4 atoms',addAtom:'Add Atom - Click anchor atom',deleteAtom:'Delete Atom - Click atom to delete'};
 
@@ -671,6 +679,7 @@ window.addEventListener('resize',function(){var rw=container.clientWidth||window
 
 function animate(){requestAnimationFrame(animate);renderer.render(scene,camera)}
 animate();
+}catch(e){var el=document.getElementById('error-msg');var ll=document.getElementById('loading');if(ll)ll.style.display='none';if(el){el.style.display='block';el.textContent='Error: '+e.message}}
 })();
 </script>
 </body>
