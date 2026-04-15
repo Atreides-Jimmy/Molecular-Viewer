@@ -1,6 +1,20 @@
 # Change Log
 
-## [0.3.0] - 2026-04-14
+## \[0.4.0] - 2026-04-15
+
+### Added
+
+- **Extended element selection** — Add Atom dialog now includes 70+ elements (periods 1-6, common transition metals and lanthanides) instead of just 10
+- **Bond order selection when adding atom** — Choose single, double, or triple bond when adding a new atom
+- **Bond order editing** — Bond Length modal now shows current bond order and allows changing it (single ↔ double ↔ triple); changes are reflected immediately in 3D display
+- **GJF connect section in saved files** — When saving as GJF format, bond connectivity information (atom indices + bond orders) is now correctly written in the connect section, keeping atom numbering and bond data consistent after add/delete/edit operations
+- **Default save path** — Save As dialog now defaults to the directory of the currently opened file instead of an arbitrary location
+
+### Fixed
+
+- **Variable declaration order** — Moved `selectedAtoms` and other state variables before `rebuildScene()` call to fix `indexOf` undefined error that caused black screen
+
+## \[0.3.0] - 2026-04-14
 
 ### Fixed
 
@@ -10,7 +24,7 @@
 - **Comprehensive error handling** — Added `try/catch` around entire initialization; any JavaScript error now displays a visible red error message instead of a silent black screen
 - **Loading state management** — Loading indicator is hidden once Three.js renderer is created; error messages properly hide the loading indicator
 
-## [0.2.2] - 2026-04-14
+## \[0.2.2] - 2026-04-14
 
 ### Fixed
 
@@ -18,18 +32,18 @@
 - **Local resource loading** — Changed script loading to use `webview.asWebviewUri()` for reliable local file access, compatible with both local and Remote-SSH scenarios
 - **CSP updated** — Replaced `https://cdnjs.cloudflare.com` in Content Security Policy with `webview.cspSource` for proper local resource authorization
 
-## [0.2.1] - 2026-04-14
+## \[0.2.1] - 2026-04-14
 
 ### Fixed
 
 - **Black screen on startup** — Changed layout from absolute positioning to CSS flexbox for the toolbar, status bar, and 3D container, ensuring the container always has correct dimensions
 - **Container dimension fallback** — Added fallback to `window.innerWidth/innerHeight` when `container.clientWidth/clientHeight` is 0, preventing Three.js renderer from creating a 0×0 canvas
 - **Three.js load check** — Added check for `THREE` undefined with visible error message when CDN fails to load
-- **`acquireVsCodeApi()` multiple call bug** — Moved API acquisition to top-level (once per session) instead of inside `doSave()`, preventing error on second Save As click
+- **`acquireVsCodeApi()`** **multiple call bug** — Moved API acquisition to top-level (once per session) instead of inside `doSave()`, preventing error on second Save As click
 - **CSP inline style violation** — Replaced inline `style="background:#c33"` on Delete button with CSS class `.mbtn-danger`, complying with Content Security Policy
 - **Error display element** — Added `#error-msg` element for showing runtime errors to users instead of silent black screen
 
-## [0.2.0] - 2026-04-14
+## \[0.2.0] - 2026-04-14
 
 ### Added
 
@@ -47,7 +61,7 @@
 - **Rodrigues Rotation** — `rotAroundAxis()` implements Rodrigues' rotation formula for accurate rotation around arbitrary axes
 - **Real-time 3D Preview** — Slider and input changes immediately update the 3D molecular view
 
-## [0.1.0] - 2025-01-01
+## \[0.1.0] - 2026-04-14
 
 ### Added
 
@@ -72,3 +86,4 @@
 - Command palette integration
 - Remote-SSH compatibility
 - CPK atom coloring scheme
+

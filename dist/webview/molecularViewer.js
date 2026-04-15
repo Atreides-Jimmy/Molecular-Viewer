@@ -47,6 +47,7 @@ class MolecularViewerProvider {
         const fileName = uri.path.split('/').pop() || 'unknown.xyz';
         let data = (0, index_1.parseFile)(textContent, fileName);
         data = (0, bondDetector_1.ensureBonds)(data);
+        data.filePath = uri.fsPath;
         return new MolecularDocument(uri, data);
     }
     async resolveCustomEditor(document, webviewPanel, _token) {
@@ -58,8 +59,12 @@ class MolecularViewerProvider {
             switch (message.command) {
                 case 'saveFile':
                     try {
+                        const srcPath = message.filePath || '';
+                        const srcDir = srcPath ? srcPath.substring(0, srcPath.replace(/\\/g, '/').lastIndexOf('/')) : '';
+                        const defaultName = message.suggestedName || 'molecule.xyz';
+                        const defaultUri = srcDir ? vscode.Uri.file(srcDir + '/' + defaultName) : vscode.Uri.file(defaultName);
                         const uri = await vscode.window.showSaveDialog({
-                            defaultUri: vscode.Uri.file(message.suggestedName || 'molecule.xyz'),
+                            defaultUri: defaultUri,
                             filters: {
                                 'XYZ Files': ['xyz'],
                                 'Gaussian Input': ['gjf'],
@@ -119,7 +124,7 @@ class MolecularViewerProvider {
         const bondData = data.bonds.map(b => ({
             atom1: b.atom1, atom2: b.atom2, order: b.order
         }));
-        const jsonData = JSON.stringify({ atoms: atomData, bonds: bondData, title: data.title });
+        const jsonData = JSON.stringify({ atoms: atomData, bonds: bondData, title: data.title, atomColors: atomColors, filePath: data.filePath || '' });
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -270,7 +275,10 @@ function createBond(b){
     var br=0.12,ord=b.order||1;
     var c1=new THREE.Color(a1.color),c2=new THREE.Color(a2.color);
     if(ord===1){hBond(s,mp,d,l/2,br,c1);hBond(mp,e,d,l/2,br,c2)}
-    else if(ord===2){var off=0.12,p=getPerp(d).multiplyScalar(off);
+    else if(ord===1.5){var off=0.10,p=getPerp(d).multiplyScalar(off);
+        hBond(s.clone().add(p),mp.clone().add(p),d,l/2,br*0.7,c1);hBond(mp.clone().add(p),e.clone().add(p),d,l/2,br*0.7,c2);
+        hBond(s.clone().sub(p),mp.clone().sub(p),d,l/2,br*0.7,c1);hBond(mp.clone().sub(p),e.clone().sub(p),d,l/2,br*0.7,c2);
+    }else if(ord===2){var off=0.12,p=getPerp(d).multiplyScalar(off);
         hBond(s.clone().add(p),mp.clone().add(p),d,l/2,br*0.6,c1);hBond(mp.clone().add(p),e.clone().add(p),d,l/2,br*0.6,c2);
         hBond(s.clone().sub(p),mp.clone().sub(p),d,l/2,br*0.6,c1);hBond(mp.clone().sub(p),e.clone().sub(p),d,l/2,br*0.6,c2);
     }else if(ord===3){var off=0.15,p=getPerp(d).multiplyScalar(off);
@@ -483,20 +491,30 @@ function hideModal(){modalOverlay.classList.remove('show');modalCallback=null}
 function showBondLengthModal(){
     var a1=MD.atoms[selectedAtoms[0]],a2=MD.atoms[selectedAtoms[1]];
     var cur=dist(a1,a2);
+    var existingBond=MD.bonds.find(function(b){return(b.atom1===selectedAtoms[0]&&b.atom2===selectedAtoms[1])||(b.atom1===selectedAtoms[1]&&b.atom2===selectedAtoms[0])});
+    var curOrder=existingBond?existingBond.order:1;
     saveOriginal();
     var n1=a1.element+(selectedAtoms[0]+1),n2=a2.element+(selectedAtoms[1]+1);
     showModal('<h3>Adjust Bond Length</h3>'+
-        '<div class="current-val">Current: '+cur.toFixed(4)+' A</div>'+
+        '<div class="current-val">Current: '+cur.toFixed(4)+' A, Bond order: '+curOrder+'</div>'+
         '<label>Fix atom:</label><select id="m-fix"><option value="1">Fix '+n1+' (move '+n2+')</option><option value="2">Fix '+n2+' (move '+n1+')</option></select>'+
-        '<label>Target length (A):</label><input type="number" id="m-val" value="'+cur.toFixed(4)+'" step="0.01" min="0.5" max="6">'+
-        '<input type="range" id="m-slider" value="'+cur.toFixed(4)+'" min="0.5" max="6" step="0.01">'+
+        '<label>Bond order:</label><select id="m-order"><option value="1"'+(curOrder===1?' selected':'')+'>Single (1.0)</option><option value="1.5"'+(curOrder===1.5?' selected':'')+'>Aromatic (1.5)</option><option value="2"'+(curOrder===2?' selected':'')+'>Double (2.0)</option><option value="3"'+(curOrder===3?' selected':'')+'>Triple (3.0)</option></select>'+
+        '<label>Target length (A):</label><input type="number" id="m-val" value="'+cur.toFixed(4)+'" step="0.01" min="0.3" max="6">'+
+        '<input type="range" id="m-slider" value="'+cur.toFixed(4)+'" min="0.3" max="6" step="0.01">'+
         '<div class="modal-btns"><button class="mbtn mbtn-cancel" id="m-cancel">Cancel</button><button class="mbtn mbtn-ok" id="m-ok">OK</button></div>',null);
-    var valEl=document.getElementById('m-val'),sliderEl=document.getElementById('m-slider'),fixEl=document.getElementById('m-fix');
+    var valEl=document.getElementById('m-val'),sliderEl=document.getElementById('m-slider'),fixEl=document.getElementById('m-fix'),orderEl=document.getElementById('m-order');
     sliderEl.addEventListener('input',function(){valEl.value=this.value;applyBondLength(parseFloat(this.value),fixEl.value==='1')});
     valEl.addEventListener('input',function(){sliderEl.value=this.value;applyBondLength(parseFloat(this.value),fixEl.value==='1')});
     fixEl.addEventListener('change',function(){applyBondLength(parseFloat(valEl.value),this.value==='1')});
+    orderEl.addEventListener('change',function(){
+        var newOrder=parseFloat(this.value);
+        if(existingBond){existingBond.order=newOrder;rebuildScene()}
+    });
     document.getElementById('m-ok').addEventListener('click',function(){hideModal();originalCoords=null;setMode('view')});
-    document.getElementById('m-cancel').addEventListener('click',function(){restoreOriginal();rebuildScene();hideModal();originalCoords=null;setMode('view')});
+    document.getElementById('m-cancel').addEventListener('click',function(){
+        if(existingBond&&originalCoords){existingBond.order=curOrder}
+        restoreOriginal();rebuildScene();hideModal();originalCoords=null;setMode('view')
+    });
 }
 
 function showBondAngleModal(){
@@ -542,16 +560,39 @@ function showAddAtomModal(){
     var anchor=MD.atoms[anchorIdx];
     saveOriginal();
     showModal('<h3>Add Atom</h3>'+
-        '<label>Element:</label><select id="m-elem"><option>H</option><option>C</option><option>N</option><option>O</option><option>F</option><option>P</option><option>S</option><option>Cl</option><option>Br</option><option>I</option></select>'+
-        '<label>Bond length (A):</label><input type="number" id="m-val" value="1.09" step="0.01" min="0.5" max="4">'+
+        '<label>Element:</label><select id="m-elem">'+
+        '<option>H</option><option>He</option>'+
+        '<option>Li</option><option>Be</option><option>B</option><option>C</option><option>N</option><option>O</option><option>F</option><option>Ne</option>'+
+        '<option>Na</option><option>Mg</option><option>Al</option><option>Si</option><option>P</option><option>S</option><option>Cl</option><option>Ar</option>'+
+        '<option>K</option><option>Ca</option><option>Sc</option><option>Ti</option><option>V</option><option>Cr</option><option>Mn</option><option>Fe</option>'+
+        '<option>Co</option><option>Ni</option><option>Cu</option><option>Zn</option><option>Ga</option><option>Ge</option><option>As</option><option>Se</option>'+
+        '<option>Br</option><option>Kr</option><option>Rb</option><option>Sr</option><option>Y</option><option>Zr</option><option>Nb</option><option>Mo</option>'+
+        '<option>Ru</option><option>Rh</option><option>Pd</option><option>Ag</option><option>Cd</option><option>In</option><option>Sn</option><option>Sb</option>'+
+        '<option>Te</option><option>I</option><option>Xe</option><option>Cs</option><option>Ba</option><option>La</option><option>Ce</option><option>Pr</option>'+
+        '<option>Nd</option><option>Sm</option><option>Eu</option><option>Gd</option><option>Tb</option><option>Dy</option><option>Ho</option><option>Er</option>'+
+        '<option>Tm</option><option>Yb</option><option>Lu</option><option>Hf</option><option>Ta</option><option>W</option><option>Re</option><option>Os</option>'+
+        '<option>Ir</option><option>Pt</option><option>Au</option><option>Hg</option><option>Tl</option><option>Pb</option><option>Bi</option>'+
+        '</select>'+
+        '<label>Bond order:</label><select id="m-bond-order"><option value="1">Single (1.0)</option><option value="1.5">Aromatic (1.5)</option><option value="2">Double (2.0)</option><option value="3">Triple (3.0)</option></select>'+
+        '<label>Bond length (A):</label><input type="number" id="m-val" value="1.09" step="0.01" min="0.3" max="5">'+
         '<div class="modal-btns"><button class="mbtn mbtn-cancel" id="m-cancel">Cancel</button><button class="mbtn mbtn-ok" id="m-ok">OK</button></div>',null);
     document.getElementById('m-elem').addEventListener('change',function(){
-        var defaults={H:1.09,C:1.54,N:1.47,O:1.43,F:1.36,P:1.80,S:1.82,Cl:1.77,Br:1.94,I:2.14};
+        var defaults={H:1.09,He:1.30,Li:2.12,Be:1.67,B:1.58,C:1.54,N:1.47,O:1.43,F:1.36,Ne:1.35,
+            Na:1.88,Mg:1.63,Al:1.84,Si:1.87,P:1.80,S:1.82,Cl:1.77,Ar:1.74,
+            K:2.34,Ca:2.00,Sc:1.88,Ti:1.87,V:1.79,Cr:1.79,Mn:1.83,Fe:1.80,
+            Co:1.78,Ni:1.73,Cu:1.84,Zn:1.88,Ga:1.87,Ge:1.88,As:1.87,Se:1.90,
+            Br:1.94,Kr:1.90,Rb:2.53,Sr:2.15,Y:2.12,Zr:2.06,Nb:2.04,Mo:2.08,
+            Ru:2.07,Rh:2.09,Pd:2.05,Ag:2.10,Cd:2.07,In:2.10,Sn:2.17,Sb:2.12,
+            Te:2.14,I:2.14,Xe:2.16,Cs:2.65,Ba:2.22,La:2.32,Ce:2.30,Pr:2.31,
+            Nd:2.30,Sm:2.29,Eu:2.29,Gd:2.29,Tb:2.28,Dy:2.28,Ho:2.27,Er:2.27,
+            Tm:2.26,Yb:2.26,Lu:2.26,Hf:2.23,Ta:2.22,W:2.18,Re:2.20,Os:2.19,
+            Ir:2.16,Pt:2.13,Au:2.14,Hg:2.14,Tl:2.20,Pb:2.22,Bi:2.23};
         document.getElementById('m-val').value=defaults[this.value]||1.5;
     });
     document.getElementById('m-ok').addEventListener('click',function(){
         var el=document.getElementById('m-elem').value;
         var bl=parseFloat(document.getElementById('m-val').value)||1.5;
+        var bondOrder=parseFloat(document.getElementById('m-bond-order').value)||1;
         var dir={x:0,y:0,z:1};
         var bonded=[];
         MD.bonds.forEach(function(b){
@@ -565,9 +606,8 @@ function showAddAtomModal(){
             if(al>1e-10){dir={x:-avg.x/al,y:-avg.y/al,z:-avg.z/al}}
         }
         var newIdx=MD.atoms.length;
-        var colors={H:'#FFFFFF',C:'#909090',N:'#3050F8',O:'#FF0D0D',F:'#90E050',P:'#FF8000',S:'#FFFF30',Cl:'#1FF01F',Br:'#A62929',I:'#940094'};
-        MD.atoms.push({element:el,x:anchor.x+dir.x*bl,y:anchor.y+dir.y*bl,z:anchor.z+dir.z*bl,color:colors[el]||'#FF1493',index:newIdx});
-        MD.bonds.push({atom1:anchorIdx,atom2:newIdx,order:1});
+        MD.atoms.push({element:el,x:anchor.x+dir.x*bl,y:anchor.y+dir.y*bl,z:anchor.z+dir.z*bl,color:MD.atomColors[el]||'#FF1493',index:newIdx});
+        MD.bonds.push({atom1:anchorIdx,atom2:newIdx,order:bondOrder});
         rebuildScene();hideModal();originalCoords=null;setMode('view');
     });
     document.getElementById('m-cancel').addEventListener('click',function(){hideModal();originalCoords=null;setMode('view')});
@@ -597,6 +637,14 @@ function doSave(){
     var gjf='%chk=molecule.chk\\n%mem=4GB\\n%nproc=4\\n# B3LYP/6-31G(d)\\n\\n'+(MD.title||'Modified structure')+'\\n\\n0 1\\n';
     MD.atoms.forEach(function(a){gjf+=' '+a.element+'   '+a.x.toFixed(6)+'   '+a.y.toFixed(6)+'   '+a.z.toFixed(6)+'\\n'});
     gjf+='\\n';
+    MD.atoms.forEach(function(a,i){
+        var parts=[i+1];
+        MD.bonds.forEach(function(b){
+            if(b.atom1===i)parts.push(b.atom2+1,b.order.toFixed(1));
+        });
+        if(parts.length>1){gjf+=parts.join(' ')+'\\n'}
+    });
+    gjf+='\\n';
     showModal('<h3>Save File</h3>'+
         '<label>Format:</label><select id="m-fmt"><option value="xyz">XYZ (.xyz)</option><option value="gjf">Gaussian Input (.gjf)</option></select>'+
         '<div class="modal-btns"><button class="mbtn mbtn-cancel" id="m-cancel">Cancel</button><button class="mbtn mbtn-ok" id="m-ok">Save</button></div>',null);
@@ -604,7 +652,7 @@ function doSave(){
         var fmt=document.getElementById('m-fmt').value;
         var content=fmt==='gjf'?gjf:xyz;
         var ext=fmt==='gjf'?'.gjf':'.xyz';
-        vscodeApi.postMessage({command:'saveFile',content:content,suggestedName:'molecule_modified'+ext});
+        vscodeApi.postMessage({command:'saveFile',content:content,suggestedName:'molecule_modified'+ext,filePath:MD.filePath||''});
         hideModal();
     });
     document.getElementById('m-cancel').addEventListener('click',function(){hideModal()});

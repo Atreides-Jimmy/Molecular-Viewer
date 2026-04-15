@@ -17,4 +17,5 @@ export interface MolecularData {
     bonds: Bond[];
     title: string;
     hasExplicitBonds: boolean;
+    filePath?: string;
 }
