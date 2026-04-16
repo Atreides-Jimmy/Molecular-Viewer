@@ -7,19 +7,28 @@
 - **MOL2 file support** — New parser for Tripos MOL2 format (`.mol2`), reads `@<TRIPOS>ATOM` and `@<TRIPOS>BOND` sections with bond order support (including aromatic `ar` → 1.5)
 - **Gaussian LOG file support** — New parser for Gaussian output files (`.log`, `.out`), reads `Standard orientation:` and `Input orientation:` coordinate blocks
 - **Optimization trajectory navigation** — When opening a LOG file with multiple structures, ◀ Prev / Next ▶ buttons appear in the toolbar to step through optimization frames; frame counter shows current step and label
+- **Jump to frame** — Direct input field to jump to a specific frame number in optimization trajectory
+- **Auto play** — Automatically cycle through all optimization frames with 500ms interval
 - **Fixed atom notation in GJF** — Enhanced GJF parser to handle coordinates with fixed atom markers like `C  -1  -7.678  -1.467  1.374` or `C  -7.678  -1.467  1.374  -1` by extracting the last 3 numeric values as coordinates
+- **Aromatic bond display** — Aromatic bonds (order 1.5) now render as one solid line + one dashed line, distinguishing them from double bonds
+
+### Changed
+
+- **GJF connect section parsing** — No longer searches for explicit `connect` label; instead directly checks content after the blank line following coordinates. Lines are validated as all-numeric with max atom number ≤ total atoms; single-number lines (atoms with no additional bonds) are allowed
+- **Bond order estimation thresholds relaxed** — Tightened double/triple bond thresholds to reduce false positives: triple ≤ 0.78 (was 0.80), double ≤ 0.88 (was 0.90), single > 0.88
 
 ### Fixed
 
 - **Bond order display bug** — Bond orders > 1 from file connect sections were not displayed correctly in 3D (all showed as single bonds). Root cause: GJF parser used `Math.round()` which could alter bond orders, and `createBond` used strict `===` comparison that failed for float values. Fixed by preserving original float bond orders and using range-based comparison (`ord < 1.25` for single, `ord < 1.75` for aromatic, `ord < 2.5` for double, `ord < 3.5` for triple)
+- **GJF connect section not detected** — Lines with only an atom number (no bond pairs, e.g. `43`) were incorrectly rejected by the `tp.length < 2` check, causing the entire connect section to be skipped. Fixed by allowing single-number lines in validation
 
 ## [0.4.0] - 2026-04-15
 
 ### Added
 
 - **Extended element selection** — Add Atom dialog now includes 70+ elements (periods 1-6, common transition metals and lanthanides) instead of just 10
-- **Bond order selection when adding atom** — Choose single, double, or triple bond when adding a new atom
-- **Bond order editing** — Bond Length modal now shows current bond order and allows changing it (single ↔ double ↔ triple); changes are reflected immediately in 3D display
+- **Bond order selection when adding atom** — Choose single, aromatic (1.5), double, or triple bond when adding a new atom
+- **Bond order editing** — Bond Length modal now shows current bond order and allows changing it (single ↔ aromatic ↔ double ↔ triple); changes are reflected immediately in 3D display
 - **GJF connect section in saved files** — When saving as GJF format, bond connectivity information (atom indices + bond orders) is now correctly written in the connect section, keeping atom numbering and bond data consistent after add/delete/edit operations
 - **Default save path** — Save As dialog now defaults to the directory of the currently opened file instead of an arbitrary location
 
@@ -99,4 +108,3 @@
 - Command palette integration
 - Remote-SSH compatibility
 - CPK atom coloring scheme
-

@@ -5,9 +5,9 @@ A VS Code / Trae extension for visualizing and editing molecular structures in 3
 ## Features
 
 - **3D Ball-and-Stick Rendering** — Atoms rendered as spheres (scaled by covalent radius) with CPK coloring; bonds rendered as dual-colored cylinders
-- **Bond Order Support** — Visual distinction for single, double, and triple bonds
-- **Auto Bond Detection** — When files lack explicit connectivity, bonds are automatically detected using covalent radii + 0.45 Å tolerance
-- **GJF Connect Section** — Reads explicit bond information from Gaussian `connect` sections, including bond orders
+- **Bond Order Support** — Visual distinction for single (1 line), aromatic (1 solid + 1 dashed), double (2 lines), and triple (3 lines) bonds
+- **Auto Bond Detection** — When files lack explicit connectivity, bonds are automatically detected using covalent radii + 0.45 Å tolerance; bond order estimated by distance ratio (triple ≤ 0.78, double ≤ 0.88, single > 0.88)
+- **GJF Connect Section** — Reads explicit bond information from coordinate section in GJF files, including bond orders (1.0, 1.5, 2.0, 3.0)
 - **Interactive Mouse Control**:
   - Left drag → Rotate around molecule center
   - Scroll → Zoom in/out
@@ -21,17 +21,26 @@ A VS Code / Trae extension for visualizing and editing molecular structures in 3
 - **Bond Length Adjustment** — Select 2 atoms, view current bond length, choose which atom to fix, adjust via numeric input or slider with real-time 3D preview
 - **Bond Angle Adjustment** — Select 3 atoms (2nd is the vertex), view current angle, fix/move either side, real-time preview
 - **Dihedral Angle Adjustment** — Select 4 atoms, view current dihedral, fix/move either side, real-time preview
-- **Add Atom** — Click anchor atom, choose element (H/C/N/O/F/P/S/Cl/Br/I), set bond length, direction auto-calculated from existing bonds
+- **Bond Order Editing** — Change bond order (single / aromatic 1.5 / double / triple) in the Bond Length modal; changes reflected immediately in 3D display
+- **Add Atom** — Click anchor atom, choose element (70+ elements), set bond length and bond order, direction auto-calculated from existing bonds
 - **Delete Atom** — Click atom and confirm; atoms and bonds are automatically re-indexed
-- **Save As** — Export modified structure as XYZ or Gaussian GJF format (original file is never modified)
+- **Save As** — Export modified structure as XYZ or Gaussian GJF format (original file is never modified); GJF output includes correct connect section
 - **Cancel/Undo** — Cancel button restores original coordinates before confirming edits
+
+### Optimization Trajectory Navigation (LOG files)
+
+- **Frame Stepping** — ◀ Prev / Next ▶ buttons to step through optimization frames
+- **Jump to Frame** — Direct input field to jump to a specific frame number
+- **Auto Play** — Automatically cycle through all frames with 500ms interval
 
 ### Supported File Formats
 
 | Format | Extension | Notes |
 |--------|-----------|-------|
-| Gaussian Input | `.gjf`, `.gjf03`, `.gjf09`, `.gjf16`, `.com` | Reads Link 0, route, title, charge/mult, coordinates, connect |
+| Gaussian Input | `.gjf`, `.gjf03`, `.gjf09`, `.gjf16`, `.com` | Reads Link 0, route, title, charge/mult, coordinates, connect section; supports fixed atom notation (`C -1 x y z` or `C x y z -1`) |
 | XYZ | `.xyz` | Standard XYZ format with atom count header |
+| MOL2 | `.mol2` | Tripos MOL2 format; reads `@<TRIPOS>ATOM` and `@<TRIPOS>BOND` sections with bond order support (aromatic `ar` → 1.5) |
+| Gaussian LOG | `.log`, `.out` | Reads `Standard orientation:` / `Input orientation:` blocks; supports multi-frame optimization trajectory |
 | MDL Mol | `.mol` | Basic support |
 | SDF | `.sdf` | Basic support |
 
@@ -39,7 +48,7 @@ A VS Code / Trae extension for visualizing and editing molecular structures in 3
 
 ### From VSIX (Recommended)
 
-1. Download the latest `.vsix` file from [Releases](https://github.com/Atreides-Jimmy/molecular-viewer/releases)
+1. Download the latest `.vsix` file from [Releases](https://github.com/Atreides-Jimmy/Molecular-Viewer-on-VScode/releases)
 2. In VS Code / Trae, press `Ctrl+Shift+P`
 3. Type `Extensions: Install from VSIX...`
 4. Select the downloaded `.vsix` file
@@ -48,7 +57,7 @@ A VS Code / Trae extension for visualizing and editing molecular structures in 3
 ### From Source
 
 ```bash
-git clone https://github.com/Atreides-Jimmy/molecular-viewer.git
+git clone https://github.com/Atreides-Jimmy/Molecular-Viewer-on-VScode.git
 cd molecular-viewer
 npm install
 npm run compile
@@ -60,7 +69,7 @@ npx vsce package --no-dependencies
 
 ### Opening Molecular Files
 
-1. **Right-click** a `.gjf` or `.xyz` file in the Explorer → **Molecular Viewer: Open 3D Viewer**
+1. **Right-click** a supported file in the Explorer → **Molecular Viewer: Open 3D Viewer**
 2. **Command Palette** (`Ctrl+Shift+P`) → `Molecular Viewer: Open 3D Viewer`
 3. **Custom Editor** — Double-click a supported file and select "Molecular 3D Viewer"
 
@@ -73,7 +82,9 @@ Add to your `settings.json`:
   "workbench.editorAssociations": {
     "*.gjf": "molecularViewer.editor",
     "*.xyz": "molecularViewer.editor",
-    "*.com": "molecularViewer.editor"
+    "*.com": "molecularViewer.editor",
+    "*.mol2": "molecularViewer.editor",
+    "*.log": "molecularViewer.editor"
   }
 }
 ```
@@ -105,14 +116,14 @@ Add to your `settings.json`:
 │   Local (Windows)   │   SSH    │   Remote (Linux Server)  │
 │                     │ ───────> │                          │
 │  Trae IDE (UI)      │          │  Trae Server (Extension) │
-│  ├─ Webview 3D      │ <─────── │  ├─ Parse .gjf/.xyz     │
-│  ├─ Three.js (CDN)  │  data    │  ├─ Bond detection       │
+│  ├─ Webview 3D      │ <─────── │  ├─ Parse .gjf/.xyz/.log │
+│  ├─ Three.js (inline)│  data   │  ├─ Bond detection       │
 │  ├─ Editing UI      │          │  ├─ Save file (VS Code)  │
 │  └─ Mouse events    │          │  └─ Return molecule data  │
 └─────────────────────┘          └──────────────────────────┘
 ```
 
-The extension runs on the **remote side** (reading files, parsing, saving), while the Webview renders on the **local side** (Three.js via CDN, mouse interaction, editing UI).
+The extension runs on the **remote side** (reading files, parsing, saving), while the Webview renders on the **local side** (Three.js inlined into HTML, mouse interaction, editing UI).
 
 ## Project Structure
 
@@ -123,14 +134,17 @@ molecular-viewer/
 │   ├── types.ts               # TypeScript type definitions
 │   ├── parsers/
 │   │   ├── index.ts           # Parser dispatcher (auto-detect format)
-│   │   ├── gjfParser.ts       # Gaussian .gjf parser
+│   │   ├── gjfParser.ts       # Gaussian .gjf parser (connect section, fixed atoms)
 │   │   ├── xyzParser.ts       # XYZ format parser
-│   │   └── bondDetector.ts    # Covalent radii bond detection
+│   │   ├── mol2Parser.ts      # Tripos MOL2 format parser
+│   │   ├── logParser.ts       # Gaussian LOG parser (optimization trajectory)
+│   │   └── bondDetector.ts    # Covalent radii bond detection + order estimation
 │   └── webview/
 │       └── molecularViewer.ts # Custom editor + Three.js webview + editing
 ├── dist/                      # Compiled JavaScript (pre-built)
 ├── test/                      # Sample molecular files
-├── media/                     # Extension icon
+├── media/
+│   └── three.min.js           # Three.js r128 (bundled locally)
 ├── package.json
 ├── tsconfig.json
 └── LICENSE
@@ -162,10 +176,8 @@ npm run package
 - [ ] Multiple display styles (wireframe, space-filling, licorice)
 - [ ] Vibration animation from frequency calculations
 - [ ] ORCA output parser
-- [ ] Gaussian log/fchk parser (optimized geometries)
 - [ ] Export as PNG/SVG
 - [ ] Undo/redo history for edits
-- [ ] Bond order editing (single ↔ double ↔ triple)
 
 ## Contributing
 
