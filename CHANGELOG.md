@@ -1,6 +1,19 @@
 # Change Log
 
-## \[0.4.0] - 2026-04-15
+## [0.5.0] - 2026-04-15
+
+### Added
+
+- **MOL2 file support** — New parser for Tripos MOL2 format (`.mol2`), reads `@<TRIPOS>ATOM` and `@<TRIPOS>BOND` sections with bond order support (including aromatic `ar` → 1.5)
+- **Gaussian LOG file support** — New parser for Gaussian output files (`.log`, `.out`), reads `Standard orientation:` and `Input orientation:` coordinate blocks
+- **Optimization trajectory navigation** — When opening a LOG file with multiple structures, ◀ Prev / Next ▶ buttons appear in the toolbar to step through optimization frames; frame counter shows current step and label
+- **Fixed atom notation in GJF** — Enhanced GJF parser to handle coordinates with fixed atom markers like `C  -1  -7.678  -1.467  1.374` or `C  -7.678  -1.467  1.374  -1` by extracting the last 3 numeric values as coordinates
+
+### Fixed
+
+- **Bond order display bug** — Bond orders > 1 from file connect sections were not displayed correctly in 3D (all showed as single bonds). Root cause: GJF parser used `Math.round()` which could alter bond orders, and `createBond` used strict `===` comparison that failed for float values. Fixed by preserving original float bond orders and using range-based comparison (`ord < 1.25` for single, `ord < 1.75` for aromatic, `ord < 2.5` for double, `ord < 3.5` for triple)
+
+## [0.4.0] - 2026-04-15
 
 ### Added
 

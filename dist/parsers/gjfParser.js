@@ -28,6 +28,48 @@ function resolveElement(raw) {
     }
     return cleaned;
 }
+function isFixedAtomMarker(val) {
+    return val === -1 || val === 0 || val === 1;
+}
+function parseAtomLine(parts) {
+    if (parts.length < 4)
+        return null;
+    const element = resolveElement(parts[0]);
+    if (parts.length === 4) {
+        const x = parseFloat(parts[1]);
+        const y = parseFloat(parts[2]);
+        const z = parseFloat(parts[3]);
+        if (!isNaN(x) && !isNaN(y) && !isNaN(z))
+            return { element, x, y, z };
+        return null;
+    }
+    const coordVals = [];
+    const markerIndices = [];
+    for (let pi = 1; pi < parts.length; pi++) {
+        const v = parseFloat(parts[pi]);
+        if (isNaN(v))
+            continue;
+        if (isFixedAtomMarker(v) && Number.isInteger(v)) {
+            markerIndices.push(coordVals.length);
+        }
+        coordVals.push(v);
+    }
+    if (coordVals.length === 3) {
+        return { element, x: coordVals[0], y: coordVals[1], z: coordVals[2] };
+    }
+    if (coordVals.length === 4 && markerIndices.length === 1) {
+        const coords = coordVals.filter((_, idx) => idx !== markerIndices[0]);
+        if (coords.length === 3)
+            return { element, x: coords[0], y: coords[1], z: coords[2] };
+    }
+    if (coordVals.length >= 3) {
+        const floatVals = coordVals.filter(v => !isFixedAtomMarker(v) || !Number.isInteger(v));
+        if (floatVals.length >= 3) {
+            return { element, x: floatVals[floatVals.length - 3], y: floatVals[floatVals.length - 2], z: floatVals[floatVals.length - 1] };
+        }
+    }
+    return null;
+}
 function parseGjf(content) {
     const lines = content.split(/\r?\n/);
     const atoms = [];
@@ -60,15 +102,10 @@ function parseGjf(content) {
             break;
         }
         const parts = line.split(/\s+/);
-        if (parts.length >= 4) {
-            const element = resolveElement(parts[0]);
-            const x = parseFloat(parts[parts.length - 3]);
-            const y = parseFloat(parts[parts.length - 2]);
-            const z = parseFloat(parts[parts.length - 1]);
-            if (element && !isNaN(x) && !isNaN(y) && !isNaN(z)) {
-                atoms.push({ element, x, y, z, index: atomIndex });
-                atomIndex++;
-            }
+        const result = parseAtomLine(parts);
+        if (result) {
+            atoms.push({ element: result.element, x: result.x, y: result.y, z: result.z, index: atomIndex });
+            atomIndex++;
         }
         i++;
     }
@@ -76,48 +113,76 @@ function parseGjf(content) {
         i++;
     }
     if (i < lines.length) {
-        const remaining = lines.slice(i).join('\n');
-        const connectMatch = remaining.match(/connect\s*\n([\s\S]*?)(?:\n\s*\n|\n--|$)/i);
-        if (connectMatch) {
+        let allNumeric = true;
+        let lineCount = 0;
+        let maxAtomNum = 0;
+        for (let li = i; li < lines.length; li++) {
+            const tl = lines[li].trim();
+            if (tl === '' || tl.startsWith('--'))
+                break;
+            lineCount++;
+            const tp = tl.split(/\s+/);
+            const firstNum = parseInt(tp[0], 10);
+            if (isNaN(firstNum)) {
+                allNumeric = false;
+                break;
+            }
+            if (firstNum > maxAtomNum)
+                maxAtomNum = firstNum;
+            for (let ti = 1; ti < tp.length; ti++) {
+                if (isNaN(parseFloat(tp[ti]))) {
+                    allNumeric = false;
+                    break;
+                }
+            }
+            if (!allNumeric)
+                break;
+        }
+        if (allNumeric && lineCount > 0 && maxAtomNum <= atoms.length) {
             hasExplicitBonds = true;
-            const connectLines = connectMatch[1].split(/\r?\n/);
-            for (const cl of connectLines) {
-                const trimmed = cl.trim();
-                if (trimmed === '')
-                    continue;
-                const cparts = trimmed.split(/\s+/);
-                if (cparts.length < 2)
-                    continue;
-                const atom1 = parseInt(cparts[0], 10) - 1;
-                if (isNaN(atom1) || atom1 < 0)
-                    continue;
-                let j = 1;
-                while (j + 1 < cparts.length) {
-                    const atom2 = parseInt(cparts[j], 10) - 1;
-                    const bondOrder = parseFloat(cparts[j + 1]) || 1;
-                    const order = Math.max(1, Math.min(3, Math.round(bondOrder)));
-                    if (!isNaN(atom2) && atom2 >= 0 && atom1 !== atom2) {
-                        const exists = bonds.some(b => (b.atom1 === atom1 && b.atom2 === atom2) ||
-                            (b.atom1 === atom2 && b.atom2 === atom1));
-                        if (!exists) {
-                            bonds.push({ atom1, atom2, order });
-                        }
-                    }
-                    j += 2;
-                }
-                if (cparts.length === 2) {
-                    const atom2 = parseInt(cparts[1], 10) - 1;
-                    if (!isNaN(atom2) && atom2 >= 0 && atom1 !== atom2) {
-                        const exists = bonds.some(b => (b.atom1 === atom1 && b.atom2 === atom2) ||
-                            (b.atom1 === atom2 && b.atom2 === atom1));
-                        if (!exists) {
-                            bonds.push({ atom1, atom2, order: 1 });
-                        }
-                    }
-                }
+            for (let li = i; li < lines.length; li++) {
+                const tl = lines[li].trim();
+                if (tl === '' || tl.startsWith('--'))
+                    break;
+                const cparts = tl.split(/\s+/);
+                const atom1Num = parseInt(cparts[0], 10);
+                if (atom1Num > atoms.length)
+                    break;
+                parseConnectLine(tl, atoms.length, bonds);
             }
         }
     }
     return { atoms, bonds, title, hasExplicitBonds };
+}
+function parseConnectLine(line, totalAtoms, bonds) {
+    const cparts = line.split(/\s+/);
+    if (cparts.length < 2)
+        return;
+    const atom1 = parseInt(cparts[0], 10) - 1;
+    if (isNaN(atom1) || atom1 < 0 || atom1 >= totalAtoms)
+        return;
+    let j = 1;
+    while (j + 1 < cparts.length) {
+        const atom2 = parseInt(cparts[j], 10) - 1;
+        const bondOrder = parseFloat(cparts[j + 1]) || 1;
+        if (!isNaN(atom2) && atom2 >= 0 && atom2 < totalAtoms && atom1 !== atom2) {
+            const exists = bonds.some(b => (b.atom1 === atom1 && b.atom2 === atom2) ||
+                (b.atom1 === atom2 && b.atom2 === atom1));
+            if (!exists) {
+                bonds.push({ atom1, atom2, order: bondOrder });
+            }
+        }
+        j += 2;
+    }
+    if (cparts.length === 2) {
+        const atom2 = parseInt(cparts[1], 10) - 1;
+        if (!isNaN(atom2) && atom2 >= 0 && atom2 < totalAtoms && atom1 !== atom2) {
+            const exists = bonds.some(b => (b.atom1 === atom1 && b.atom2 === atom2) ||
+                (b.atom1 === atom2 && b.atom2 === atom1));
+            if (!exists) {
+                bonds.push({ atom1, atom2, order: 1 });
+            }
+        }
+    }
 }
 //# sourceMappingURL=gjfParser.js.map

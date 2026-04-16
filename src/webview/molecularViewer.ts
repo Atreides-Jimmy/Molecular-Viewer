@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { parseFile } from '../parsers/index';
+import { parseFile, parseLogFile, LogFrame } from '../parsers/index';
 import { ensureBonds } from '../parsers/bondDetector';
 import { MolecularData } from '../types';
 
@@ -15,11 +15,31 @@ export class MolecularViewerProvider implements vscode.CustomReadonlyEditorProvi
         const textContent = new TextDecoder().decode(content);
         const fileName = uri.path.split('/').pop() || 'unknown.xyz';
 
-        let data = parseFile(textContent, fileName);
-        data = ensureBonds(data);
+        const ext = fileName.toLowerCase().split('.').pop() || '';
+        let data: MolecularData;
+        let frames: LogFrame[] = [];
+
+        if (ext === 'log' || ext === 'out') {
+            const logResult = parseLogFile(textContent);
+            frames = logResult.frames;
+            if (frames.length > 0) {
+                data = ensureBonds({
+                    atoms: frames[0].atoms,
+                    bonds: frames[0].bonds,
+                    title: frames[0].title,
+                    hasExplicitBonds: frames[0].hasExplicitBonds
+                });
+            } else {
+                data = { atoms: [], bonds: [], title: 'No structures found', hasExplicitBonds: false };
+            }
+        } else {
+            data = parseFile(textContent, fileName);
+            data = ensureBonds(data);
+        }
+
         data.filePath = uri.fsPath;
 
-        return new MolecularDocument(uri, data);
+        return new MolecularDocument(uri, data, frames);
     }
 
     async resolveCustomEditor(
@@ -31,7 +51,7 @@ export class MolecularViewerProvider implements vscode.CustomReadonlyEditorProvi
             enableScripts: true,
         };
 
-        webviewPanel.webview.html = await this.getHtmlForWebview(webviewPanel.webview, document.data);
+        webviewPanel.webview.html = await this.getHtmlForWebview(webviewPanel.webview, document.data, document.frames);
 
         webviewPanel.webview.onDidReceiveMessage(async (message) => {
             switch (message.command) {
@@ -67,7 +87,7 @@ export class MolecularViewerProvider implements vscode.CustomReadonlyEditorProvi
         });
     }
 
-    private async getHtmlForWebview(webview: vscode.Webview, data: MolecularData): Promise<string> {
+    private async getHtmlForWebview(webview: vscode.Webview, data: MolecularData, frames: LogFrame[] = []): Promise<string> {
         const nonce = getNonce();
 
         const threeJsBytes = await vscode.workspace.fs.readFile(
@@ -109,7 +129,13 @@ export class MolecularViewerProvider implements vscode.CustomReadonlyEditorProvi
             atom1: b.atom1, atom2: b.atom2, order: b.order
         }));
 
-        const jsonData = JSON.stringify({ atoms: atomData, bonds: bondData, title: data.title, atomColors: atomColors, filePath: data.filePath || '' });
+        const framesData = frames.map(f => ({
+            atoms: f.atoms.map(a => ({ element: a.element, x: a.x, y: a.y, z: a.z, color: atomColors[a.element] || '#FF1493' })),
+            bonds: f.bonds.map(b => ({ atom1: b.atom1, atom2: b.atom2, order: b.order })),
+            stepLabel: f.stepLabel
+        }));
+
+        const jsonData = JSON.stringify({ atoms: atomData, bonds: bondData, title: data.title, atomColors: atomColors, filePath: data.filePath || '', frames: framesData });
 
         return `<!DOCTYPE html>
 <html lang="en">
@@ -151,6 +177,12 @@ canvas{display:block}
 #modal .current-val{font-size:13px;color:var(--vscode-descriptionForeground,#999);margin-bottom:6px}
 #loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--vscode-editor-foreground,#ccc);font-size:14px}
 #error-msg{display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#f66;padding:20px;font-size:13px;text-align:center;max-width:80%;z-index:50}
+.hidden{display:none!important}
+#frame-nav{display:none;align-items:center;gap:2px}
+#frame-nav.show{display:flex}
+#frame-num{width:40px;padding:2px 4px;background:var(--vscode-input-background,#3c3c3c);border:1px solid var(--vscode-input-border,#3c3c3c);color:var(--vscode-input-foreground,#ccc);border-radius:3px;font-size:11px;text-align:center}
+#frame-info{color:var(--vscode-statusBar-foreground,#fff);font-size:11px;padding:0 4px;white-space:nowrap}
+#auto-play.playing{background:var(--vscode-button-background,#0e639c);border-color:var(--vscode-button-background,#0e639c)}
 </style>
 </head>
 <body>
@@ -165,6 +197,14 @@ canvas{display:block}
 <div class="tsep"></div>
 <button class="tbtn" id="save-btn">Save As</button>
 <button class="tbtn" id="reset-btn">Reset View</button>
+<div class="tsep" id="frame-sep"></div>
+<div id="frame-nav">
+<button class="tbtn" id="prev-frame">◀</button>
+<input type="number" id="frame-num" min="1" value="1">
+<span id="frame-info">1/1</span>
+<button class="tbtn" id="next-frame">▶</button>
+<button class="tbtn" id="auto-play">⏵ Play</button>
+</div>
 </div>
 <div id="status-bar"><span id="mode-info">View Mode</span><span id="selection-info"></span></div>
 <div id="container"><div id="loading">Loading 3D Viewer...</div></div>
@@ -260,20 +300,42 @@ function createBond(b){
     var mp=new THREE.Vector3().addVectors(s,e).multiplyScalar(0.5);
     var br=0.12,ord=b.order||1;
     var c1=new THREE.Color(a1.color),c2=new THREE.Color(a2.color);
-    if(ord===1){hBond(s,mp,d,l/2,br,c1);hBond(mp,e,d,l/2,br,c2)}
-    else if(ord===1.5){var off=0.10,p=getPerp(d).multiplyScalar(off);
-        hBond(s.clone().add(p),mp.clone().add(p),d,l/2,br*0.7,c1);hBond(mp.clone().add(p),e.clone().add(p),d,l/2,br*0.7,c2);
-        hBond(s.clone().sub(p),mp.clone().sub(p),d,l/2,br*0.7,c1);hBond(mp.clone().sub(p),e.clone().sub(p),d,l/2,br*0.7,c2);
-    }else if(ord===2){var off=0.12,p=getPerp(d).multiplyScalar(off);
+    if(ord<1.25){hBond(s,mp,d,l/2,br,c1);hBond(mp,e,d,l/2,br,c2)}
+    else if(ord<1.75){var off=0.10,p=getPerp(d).multiplyScalar(off);
+        hBond(s,mp,d,l/2,br,c1);hBond(mp,e,d,l/2,br,c2);
+        hDashedBond(s.clone().add(p),e.clone().add(p),d,l,br*0.7,c1,6);
+    }else if(ord<2.5){var off=0.12,p=getPerp(d).multiplyScalar(off);
         hBond(s.clone().add(p),mp.clone().add(p),d,l/2,br*0.6,c1);hBond(mp.clone().add(p),e.clone().add(p),d,l/2,br*0.6,c2);
         hBond(s.clone().sub(p),mp.clone().sub(p),d,l/2,br*0.6,c1);hBond(mp.clone().sub(p),e.clone().sub(p),d,l/2,br*0.6,c2);
-    }else if(ord===3){var off=0.15,p=getPerp(d).multiplyScalar(off);
+    }else if(ord<3.5){var off=0.15,p=getPerp(d).multiplyScalar(off);
         hBond(s,mp,d,l/2,br*0.45,c1);hBond(mp,e,d,l/2,br*0.45,c2);
         hBond(s.clone().add(p),mp.clone().add(p),d,l/2,br*0.45,c1);hBond(mp.clone().add(p),e.clone().add(p),d,l/2,br*0.45,c2);
         hBond(s.clone().sub(p),mp.clone().sub(p),d,l/2,br*0.45,c1);hBond(mp.clone().sub(p),e.clone().sub(p),d,l/2,br*0.45,c2);
     }else{hBond(s,mp,d,l/2,br,c1);hBond(mp,e,d,l/2,br,c2)}
 }
 
+function hDashedBond(s,e,d,hl,r,c,dashes){
+    var seg=hl/dashes, gap=seg*0.35, dashLen=seg-gap;
+    var dir=d.clone().normalize();
+    for(var k=0;k<dashes;k++){
+        var t0=k*seg+gap*0.5;
+        var t1=t0+dashLen;
+        if(t1>hl)t1=hl;
+        var ds=s.clone().add(dir.clone().multiplyScalar(t0));
+        var de=s.clone().add(dir.clone().multiplyScalar(t1));
+        var dm=new THREE.Vector3().addVectors(ds,de).multiplyScalar(0.5);
+        var dl=t1-t0;
+        if(dl<0.001)continue;
+        var g=new THREE.CylinderGeometry(r,r,dl,6,1);
+        var m=new THREE.MeshPhongMaterial({color:c,shininess:40,specular:0x222222});
+        var mesh=new THREE.Mesh(g,m);
+        mesh.position.copy(dm);
+        var axis=new THREE.Vector3(0,1,0);
+        mesh.quaternion.copy(new THREE.Quaternion().setFromUnitVectors(axis,dir));
+        moleculeGroup.add(mesh);
+        bondMeshes.push(mesh);
+    }
+}
 function hBond(s,e,d,hl,r,c){
     var g=new THREE.CylinderGeometry(r,r,hl,8,1);
     var m=new THREE.MeshPhongMaterial({color:c,shininess:40,specular:0x222222});
@@ -312,6 +374,75 @@ function setMode(m){
 document.querySelectorAll('.tbtn[data-mode]').forEach(function(b){b.addEventListener('click',function(){setMode(this.dataset.mode)})});
 document.getElementById('reset-btn').addEventListener('click',function(){rotX=0;rotY=0;panX=0;panY=0;camDist=initCam;camera.position.set(0,0,camDist);updateTransform()});
 document.getElementById('save-btn').addEventListener('click',doSave);
+
+var currentFrame=0;
+var totalFrames=MD.frames?MD.frames.length:0;
+var autoPlayTimer=null;
+var isAutoPlaying=false;
+var frameNavEl=document.getElementById('frame-nav');
+var frameSepEl=document.getElementById('frame-sep');
+if(totalFrames>1){
+    frameNavEl.classList.add('show');
+    frameSepEl.classList.remove('hidden');
+    updateFrameInfo();
+}else{
+    frameNavEl.classList.remove('show');
+    frameSepEl.classList.add('hidden');
+}
+function updateFrameInfo(){
+    var el=document.getElementById('frame-info');
+    var numEl=document.getElementById('frame-num');
+    if(el)el.textContent='/'+totalFrames+(MD.frames[currentFrame]?' - '+MD.frames[currentFrame].stepLabel:'');
+    if(numEl)numEl.value=currentFrame+1;
+}
+function switchFrame(idx){
+    if(idx<0||idx>=totalFrames)return;
+    currentFrame=idx;
+    var f=MD.frames[idx];
+    MD.atoms=f.atoms.map(function(a,i){a.index=i;return a});
+    MD.bonds=f.bonds||[];
+    if(MD.bonds.length===0){
+        MD.bonds=detectBondsFromAtoms(MD.atoms);
+    }
+    rebuildScene();
+    updateFrameInfo();
+}
+function detectBondsFromAtoms(atoms){
+    var CR={H:0.31,He:0.28,Li:1.28,Be:0.96,B:0.84,C:0.76,N:0.71,O:0.66,F:0.57,Na:1.66,Mg:1.41,Al:1.21,Si:1.11,P:1.07,S:1.05,Cl:1.02,K:2.03,Ca:1.76,Fe:1.32,Cu:1.32,Zn:1.22,Br:1.20,I:1.39};
+    var tol=0.45;
+    var bonds=[];
+    for(var i=0;i<atoms.length;i++){
+        for(var j=i+1;j<atoms.length;j++){
+            var dx=atoms[i].x-atoms[j].x,dy=atoms[i].y-atoms[j].y,dz=atoms[i].z-atoms[j].z;
+            var d=Math.sqrt(dx*dx+dy*dy+dz*dz);
+            var r1=CR[atoms[i].element]||1.5,r2=CR[atoms[j].element]||1.5;
+            var maxD=r1+r2+tol;
+            if(d<=maxD){
+                var ratio=d/(r1+r2);
+                var order=1;
+                if(ratio<=0.78)order=3;
+                else if(ratio<=0.88)order=2;
+                bonds.push({atom1:i,atom2:j,order:order});
+            }
+        }
+    }
+    return bonds;
+}
+document.getElementById('prev-frame').addEventListener('click',function(){if(currentFrame>0)switchFrame(currentFrame-1)});
+document.getElementById('next-frame').addEventListener('click',function(){if(currentFrame<totalFrames-1)switchFrame(currentFrame+1)});
+document.getElementById('frame-num').addEventListener('change',function(){var n=parseInt(this.value);if(!isNaN(n)&&n>=1&&n<=totalFrames)switchFrame(n-1)});
+document.getElementById('auto-play').addEventListener('click',function(){
+    if(isAutoPlaying){
+        clearInterval(autoPlayTimer);autoPlayTimer=null;isAutoPlaying=false;
+        this.textContent='⏵ Play';this.classList.remove('playing');
+    }else{
+        isAutoPlaying=true;this.textContent='⏸ Stop';this.classList.add('playing');
+        autoPlayTimer=setInterval(function(){
+            var next=currentFrame+1;if(next>=totalFrames)next=0;
+            switchFrame(next);
+        },500);
+    }
+});
 
 function highlightSelected(){
     atomMeshes.forEach(function(m,i){
@@ -724,7 +855,8 @@ animate();
 class MolecularDocument implements vscode.CustomDocument {
     constructor(
         public readonly uri: vscode.Uri,
-        public readonly data: MolecularData
+        public readonly data: MolecularData,
+        public readonly frames: LogFrame[] = []
     ) {}
 
     dispose(): void {}

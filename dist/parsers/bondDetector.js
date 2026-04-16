@@ -33,6 +33,17 @@ function distance(a1, a2) {
     const dz = a1.z - a2.z;
     return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
+function estimateBondOrder(d, r1, r2) {
+    const sumR = r1 + r2;
+    if (sumR < 0.01)
+        return 1;
+    const ratio = d / sumR;
+    if (ratio <= 0.78)
+        return 3;
+    if (ratio <= 0.88)
+        return 2;
+    return 1;
+}
 function detectBonds(atoms) {
     const bonds = [];
     const n = atoms.length;
@@ -43,7 +54,8 @@ function detectBonds(atoms) {
             const maxDist = r1 + r2 + BOND_TOLERANCE;
             const d = distance(atoms[i], atoms[j]);
             if (d > 0 && d <= maxDist) {
-                bonds.push({ atom1: i, atom2: j, order: 1 });
+                const order = estimateBondOrder(d, r1, r2);
+                bonds.push({ atom1: i, atom2: j, order });
             }
         }
     }
