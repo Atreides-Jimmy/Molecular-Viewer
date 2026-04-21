@@ -350,7 +350,8 @@ function hBond(s,e,d,hl,r,c){
     bondMeshes.push(mesh);
 }
 
-var isRot=false,isPan=false,prevM={x:0,y:0},rotX=0,rotY=0,panX=0,panY=0,camDist=10;
+var isRot=false,isPan=false,prevM={x:0,y:0},panX=0,panY=0,camDist=10;
+var rotQuat=new THREE.Quaternion();
 var currentMode='view';
 var selectedAtoms=[];
 var originalCoords=null;
@@ -381,7 +382,7 @@ function resetSelection(){
 }
 
 document.querySelectorAll('.tbtn[data-mode]').forEach(function(b){b.addEventListener('click',function(){setMode(this.dataset.mode)})});
-document.getElementById('reset-btn').addEventListener('click',function(){rotX=0;rotY=0;panX=0;panY=0;camDist=initCam;camera.position.set(0,0,camDist);updateTransform()});
+document.getElementById('reset-btn').addEventListener('click',function(){rotQuat.identity();panX=0;panY=0;camDist=initCam;camera.position.set(0,0,camDist);updateTransform()});
 document.getElementById('save-btn').addEventListener('click',doSave);
 
 var currentFrame=0;
@@ -789,7 +790,7 @@ function doSave(){
         MD.bonds.forEach(function(b){
             if(b.atom1===i)parts.push(b.atom2+1,b.order.toFixed(1));
         });
-        if(parts.length>1){gjf+=parts.join(' ')+'\\n'}
+        gjf+=parts.join(' ')+'\\n';
     });
     gjf+='\\n';
     if(meta&&meta.afterConnectContent){gjf+=meta.afterConnectContent+'\\n'}
@@ -853,7 +854,7 @@ function showSelectAtomsModal(){
 }
 
 function updateTransform(){
-    moleculeGroup.rotation.copy(new THREE.Euler(rotX,rotY,0,'YXZ'));
+    moleculeGroup.quaternion.copy(rotQuat);
     pivotGroup.position.set(panX,panY,0);
 }
 
@@ -884,7 +885,12 @@ canvas.addEventListener('mousedown',function(e){
 
 canvas.addEventListener('mousemove',function(e){
     var dm={x:e.clientX-prevM.x,y:e.clientY-prevM.y};
-    if(isRot){rotY+=dm.x*0.005;rotX+=dm.y*0.005;updateTransform()}
+    if(isRot){
+        var qx=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),dm.x*0.008);
+        var qy=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),dm.y*0.008);
+        rotQuat.premultiply(qx);rotQuat.premultiply(qy);rotQuat.normalize();
+        updateTransform()
+    }
     if(isPan){panX+=dm.x*0.01*(camDist/20);panY-=dm.y*0.01*(camDist/20);updateTransform()}
     prevM={x:e.clientX,y:e.clientY};
     var rect=canvas.getBoundingClientRect();
@@ -911,7 +917,7 @@ canvas.addEventListener('touchstart',function(e){e.preventDefault();
     else if(e.touches.length===2){isRot=false;var dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;touchSD=Math.sqrt(dx*dx+dy*dy)}
 },{passive:false});
 canvas.addEventListener('touchmove',function(e){e.preventDefault();
-    if(e.touches.length===1&&isRot){var dm={x:e.touches[0].clientX-prevM.x,y:e.touches[0].clientY-prevM.y};rotY+=dm.x*0.005;rotX+=dm.y*0.005;updateTransform();prevM={x:e.touches[0].clientX,y:e.touches[0].clientY}}
+    if(e.touches.length===1&&isRot){var dm={x:e.touches[0].clientX-prevM.x,y:e.touches[0].clientY-prevM.y};var qx=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),dm.x*0.008);var qy=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),dm.y*0.008);rotQuat.premultiply(qx);rotQuat.premultiply(qy);rotQuat.normalize();updateTransform();prevM={x:e.touches[0].clientX,y:e.touches[0].clientY}}
     else if(e.touches.length===2){var dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY,d=Math.sqrt(dx*dx+dy*dy);
         if(touchSD>0){camDist*=touchSD/d;camDist=Math.max(1,Math.min(500,camDist));camera.position.z=camDist}touchSD=d}
 },{passive:false});

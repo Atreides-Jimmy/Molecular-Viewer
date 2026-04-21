@@ -1,5 +1,25 @@
 # Change Log
 
+## [0.6.1] - 2026-04-15
+
+### Fixed
+
+- **Rotation direction bug** — When rotating the molecule to its back side, the rotation direction would reverse (up became down, left became right). Root cause: Euler angle rotation with 'YXZ' order suffers from gimbal lock near ±90°. Fixed by replacing Euler-based rotation with quaternion-based rotation (`THREE.Quaternion`), which has no gimbal lock and always rotates consistently in screen-space directions
+- **Rotation sensitivity** — Increased rotation sensitivity from 0.005 to 0.008 per pixel of mouse movement, making rotation feel more responsive
+
+### Changed
+
+- **GJF connect section output** — When saving as GJF, all atom lines in the connect section are now written, including atoms with no bonds (e.g. `2` alone on a line) and atoms whose bond info was already listed in other atoms' lines. Previously, lines with only an atom number (no bond pairs) were skipped
+
+## [0.6.0] - 2026-04-15
+
+### Added
+
+- **Bond order 0 (Remove bond)** — Bond Length modal now includes a "None (0) - Remove bond" option; selecting it deletes the bond between the two atoms
+- **Select Atoms feature** — New toolbar button "Select Atoms" opens an input dialog where you can enter atom indices (1-based), ranges (e.g. `3-10`), or element symbols (e.g. `C H`), separated by spaces or commas; selected atoms are highlighted in yellow
+- **Stay in editing mode** — After completing an edit operation (OK/Cancel), the viewer now stays in the current editing mode instead of switching back to View mode, allowing continuous adjustments
+- **GJF file structure preservation** — When saving as GJF, the original file's Link 0 lines (`%chk`, `%mem`, `%nproc`), route line, title, charge/multiplicity, and any content after the connect section (e.g. mixed basis set info) are preserved; only the coordinate and connect sections are updated
+
 ## [0.5.0] - 2026-04-15
 
 ### Added

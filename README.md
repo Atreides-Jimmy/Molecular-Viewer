@@ -21,10 +21,12 @@ A VS Code / Trae extension for visualizing and editing molecular structures in 3
 - **Bond Length Adjustment** — Select 2 atoms, view current bond length, choose which atom to fix, adjust via numeric input or slider with real-time 3D preview
 - **Bond Angle Adjustment** — Select 3 atoms (2nd is the vertex), view current angle, fix/move either side, real-time preview
 - **Dihedral Angle Adjustment** — Select 4 atoms, view current dihedral, fix/move either side, real-time preview
-- **Bond Order Editing** — Change bond order (single / aromatic 1.5 / double / triple) in the Bond Length modal; changes reflected immediately in 3D display
+- **Bond Order Editing** — Change bond order (none / single / aromatic 1.5 / double / triple) in the Bond Length modal; selecting "None (0)" removes the bond; changes reflected immediately in 3D display
 - **Add Atom** — Click anchor atom, choose element (70+ elements), set bond length and bond order, direction auto-calculated from existing bonds
 - **Delete Atom** — Click atom and confirm; atoms and bonds are automatically re-indexed
-- **Save As** — Export modified structure as XYZ or Gaussian GJF format (original file is never modified); GJF output includes correct connect section
+- **Select Atoms** — Input atom indices (1-based), ranges (e.g. `3-10`), or element symbols (e.g. `C H`) to highlight specific atoms in yellow
+- **Save As** — Export modified structure as XYZ or Gaussian GJF format (original file is never modified); GJF output preserves original Link 0, route, title, charge/mult, and post-connect content; connect section includes all atom lines
+- **Continuous Editing** — After completing an edit, the viewer stays in the current editing mode for repeated adjustments
 - **Cancel/Undo** — Cancel button restores original coordinates before confirming edits
 
 ### Optimization Trajectory Navigation (LOG files)
