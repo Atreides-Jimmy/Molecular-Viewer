@@ -12,10 +12,19 @@ export interface Bond {
     order: number;
 }
 
+export interface GjfMeta {
+    link0Lines: string[];
+    routeLine: string;
+    titleLines: string[];
+    chargeMultLine: string;
+    afterConnectContent: string;
+}
+
 export interface MolecularData {
     atoms: Atom[];
     bonds: Bond[];
     title: string;
     hasExplicitBonds: boolean;
     filePath?: string;
+    gjfMeta?: GjfMeta;
 }

@@ -135,7 +135,7 @@ export class MolecularViewerProvider implements vscode.CustomReadonlyEditorProvi
             stepLabel: f.stepLabel
         }));
 
-        const jsonData = JSON.stringify({ atoms: atomData, bonds: bondData, title: data.title, atomColors: atomColors, filePath: data.filePath || '', frames: framesData });
+        const jsonData = JSON.stringify({ atoms: atomData, bonds: bondData, title: data.title, atomColors: atomColors, filePath: data.filePath || '', frames: framesData, gjfMeta: data.gjfMeta || null });
 
         return `<!DOCTYPE html>
 <html lang="en">
@@ -194,6 +194,8 @@ canvas{display:block}
 <div class="tsep"></div>
 <button class="tbtn" data-mode="addAtom">Add Atom</button>
 <button class="tbtn" data-mode="deleteAtom">Delete Atom</button>
+<div class="tsep"></div>
+<button class="tbtn" data-mode="selectAtoms">Select Atoms</button>
 <div class="tsep"></div>
 <button class="tbtn" id="save-btn">Save As</button>
 <button class="tbtn" id="reset-btn">Reset View</button>
@@ -362,13 +364,20 @@ var initCam=maxD*2.5+5;
 camera.position.set(0,0,initCam);camera.lookAt(0,0,0);
 camDist=initCam;
 
-var MODE_INFO={view:'View Mode',bondLength:'Bond Length - Click 2 atoms',bondAngle:'Bond Angle - Click 3 atoms (central 2nd)',dihedral:'Dihedral - Click 4 atoms',addAtom:'Add Atom - Click anchor atom',deleteAtom:'Delete Atom - Click atom to delete'};
+var MODE_INFO={view:'View Mode',bondLength:'Bond Length - Click 2 atoms',bondAngle:'Bond Angle - Click 3 atoms (central 2nd)',dihedral:'Dihedral - Click 4 atoms',addAtom:'Add Atom - Click anchor atom',deleteAtom:'Delete Atom - Click atom to delete',selectAtoms:'Select Atoms - Input indices or element symbols'};
 
 function setMode(m){
+    if(currentMode===m)return;
     currentMode=m;selectedAtoms=[];originalCoords=null;hideModal();highlightSelected();
     modeInfoEl.textContent=MODE_INFO[m]||m;
     selInfoEl.textContent='';
     document.querySelectorAll('.tbtn[data-mode]').forEach(function(b){b.classList.toggle('active',b.dataset.mode===m)});
+    if(m==='selectAtoms')showSelectAtomsModal();
+}
+
+function resetSelection(){
+    selectedAtoms=[];originalCoords=null;highlightSelected();
+    selInfoEl.textContent='';
 }
 
 document.querySelectorAll('.tbtn[data-mode]').forEach(function(b){b.addEventListener('click',function(){setMode(this.dataset.mode)})});
@@ -467,6 +476,10 @@ function checkSelectionComplete(){
     else if(currentMode==='dihedral'&&selectedAtoms.length===4)showDihedralModal();
     else if(currentMode==='addAtom'&&selectedAtoms.length===1)showAddAtomModal();
     else if(currentMode==='deleteAtom'&&selectedAtoms.length===1)showDeleteAtomModal();
+    else if(currentMode==='selectAtoms'){
+        var names=selectedAtoms.map(function(i){return MD.atoms[i].element+(i+1)}).join(', ');
+        selInfoEl.textContent='Selected: '+names;
+    }
 }
 
 function dist(a,b){var dx=a.x-b.x,dy=a.y-b.y,dz=a.z-b.z;return Math.sqrt(dx*dx+dy*dy+dz*dz)}
@@ -615,7 +628,7 @@ function showBondLengthModal(){
     showModal('<h3>Adjust Bond Length</h3>'+
         '<div class="current-val">Current: '+cur.toFixed(4)+' A, Bond order: '+curOrder+'</div>'+
         '<label>Fix atom:</label><select id="m-fix"><option value="1">Fix '+n1+' (move '+n2+')</option><option value="2">Fix '+n2+' (move '+n1+')</option></select>'+
-        '<label>Bond order:</label><select id="m-order"><option value="1"'+(curOrder===1?' selected':'')+'>Single (1.0)</option><option value="1.5"'+(curOrder===1.5?' selected':'')+'>Aromatic (1.5)</option><option value="2"'+(curOrder===2?' selected':'')+'>Double (2.0)</option><option value="3"'+(curOrder===3?' selected':'')+'>Triple (3.0)</option></select>'+
+        '<label>Bond order:</label><select id="m-order"><option value="0"'+(curOrder===0?' selected':'')+'>None (0) - Remove bond</option><option value="1"'+(curOrder===1?' selected':'')+'>Single (1.0)</option><option value="1.5"'+(curOrder===1.5?' selected':'')+'>Aromatic (1.5)</option><option value="2"'+(curOrder===2?' selected':'')+'>Double (2.0)</option><option value="3"'+(curOrder===3?' selected':'')+'>Triple (3.0)</option></select>'+
         '<label>Target length (A):</label><input type="number" id="m-val" value="'+cur.toFixed(4)+'" step="0.01" min="0.3" max="6">'+
         '<input type="range" id="m-slider" value="'+cur.toFixed(4)+'" min="0.3" max="6" step="0.01">'+
         '<div class="modal-btns"><button class="mbtn mbtn-cancel" id="m-cancel">Cancel</button><button class="mbtn mbtn-ok" id="m-ok">OK</button></div>',null);
@@ -625,12 +638,20 @@ function showBondLengthModal(){
     fixEl.addEventListener('change',function(){applyBondLength(parseFloat(valEl.value),this.value==='1')});
     orderEl.addEventListener('change',function(){
         var newOrder=parseFloat(this.value);
-        if(existingBond){existingBond.order=newOrder;rebuildScene()}
+        if(newOrder===0){
+            if(existingBond){MD.bonds=MD.bonds.filter(function(b){return b!==existingBond});existingBond=null;rebuildScene()}
+        }else{
+            if(!existingBond){
+                existingBond={atom1:selectedAtoms[0],atom2:selectedAtoms[1],order:newOrder};
+                MD.bonds.push(existingBond);
+            }else{existingBond.order=newOrder}
+            rebuildScene();
+        }
     });
-    document.getElementById('m-ok').addEventListener('click',function(){hideModal();originalCoords=null;setMode('view')});
+    document.getElementById('m-ok').addEventListener('click',function(){hideModal();originalCoords=null;resetSelection()});
     document.getElementById('m-cancel').addEventListener('click',function(){
         if(existingBond&&originalCoords){existingBond.order=curOrder}
-        restoreOriginal();rebuildScene();hideModal();originalCoords=null;setMode('view')
+        restoreOriginal();rebuildScene();hideModal();originalCoords=null;resetSelection()
     });
 }
 
@@ -649,8 +670,8 @@ function showBondAngleModal(){
     sliderEl.addEventListener('input',function(){valEl.value=this.value;applyBondAngle(parseFloat(this.value),fixEl.value==='1')});
     valEl.addEventListener('input',function(){sliderEl.value=this.value;applyBondAngle(parseFloat(this.value),fixEl.value==='1')});
     fixEl.addEventListener('change',function(){applyBondAngle(parseFloat(valEl.value),this.value==='1')});
-    document.getElementById('m-ok').addEventListener('click',function(){hideModal();originalCoords=null;setMode('view')});
-    document.getElementById('m-cancel').addEventListener('click',function(){restoreOriginal();rebuildScene();hideModal();originalCoords=null;setMode('view')});
+    document.getElementById('m-ok').addEventListener('click',function(){hideModal();originalCoords=null;resetSelection()});
+    document.getElementById('m-cancel').addEventListener('click',function(){restoreOriginal();rebuildScene();hideModal();originalCoords=null;resetSelection()});
 }
 
 function showDihedralModal(){
@@ -668,8 +689,8 @@ function showDihedralModal(){
     sliderEl.addEventListener('input',function(){valEl.value=this.value;applyDihedral(parseFloat(this.value),fixEl.value==='1')});
     valEl.addEventListener('input',function(){sliderEl.value=this.value;applyDihedral(parseFloat(this.value),fixEl.value==='1')});
     fixEl.addEventListener('change',function(){applyDihedral(parseFloat(valEl.value),this.value==='1')});
-    document.getElementById('m-ok').addEventListener('click',function(){hideModal();originalCoords=null;setMode('view')});
-    document.getElementById('m-cancel').addEventListener('click',function(){restoreOriginal();rebuildScene();hideModal();originalCoords=null;setMode('view')});
+    document.getElementById('m-ok').addEventListener('click',function(){hideModal();originalCoords=null;resetSelection()});
+    document.getElementById('m-cancel').addEventListener('click',function(){restoreOriginal();rebuildScene();hideModal();originalCoords=null;resetSelection()});
 }
 
 function showAddAtomModal(){
@@ -725,9 +746,9 @@ function showAddAtomModal(){
         var newIdx=MD.atoms.length;
         MD.atoms.push({element:el,x:anchor.x+dir.x*bl,y:anchor.y+dir.y*bl,z:anchor.z+dir.z*bl,color:MD.atomColors[el]||'#FF1493',index:newIdx});
         MD.bonds.push({atom1:anchorIdx,atom2:newIdx,order:bondOrder});
-        rebuildScene();hideModal();originalCoords=null;setMode('view');
+        rebuildScene();hideModal();originalCoords=null;resetSelection();
     });
-    document.getElementById('m-cancel').addEventListener('click',function(){hideModal();originalCoords=null;setMode('view')});
+    document.getElementById('m-cancel').addEventListener('click',function(){hideModal();originalCoords=null;resetSelection()});
 }
 
 function showDeleteAtomModal(){
@@ -743,15 +764,24 @@ function showDeleteAtomModal(){
         MD.bonds=MD.bonds.filter(function(b){return b.atom1!==idx&&b.atom2!==idx}).map(function(b){
             return{atom1:b.atom1>idx?b.atom1-1:b.atom1,atom2:b.atom2>idx?b.atom2-1:b.atom2,order:b.order};
         });
-        rebuildScene();hideModal();setMode('view');
+        rebuildScene();hideModal();resetSelection();
     });
-    document.getElementById('m-cancel').addEventListener('click',function(){hideModal();setMode('view')});
+    document.getElementById('m-cancel').addEventListener('click',function(){hideModal();resetSelection()});
 }
 
 function doSave(){
     var xyz=MD.atoms.length+'\\n'+(MD.title||'Modified structure')+'\\n';
     MD.atoms.forEach(function(a){xyz+=a.element+'  '+a.x.toFixed(6)+'  '+a.y.toFixed(6)+'  '+a.z.toFixed(6)+'\\n'});
-    var gjf='%chk=molecule.chk\\n%mem=4GB\\n%nproc=4\\n# B3LYP/6-31G(d)\\n\\n'+(MD.title||'Modified structure')+'\\n\\n0 1\\n';
+    var gjf='';
+    var meta=MD.gjfMeta;
+    if(meta){
+        meta.link0Lines.forEach(function(l){gjf+=l+'\\n'});
+        gjf+=meta.routeLine+'\\n\\n';
+        meta.titleLines.forEach(function(l){gjf+=l+'\\n'});
+        gjf+='\\n'+meta.chargeMultLine+'\\n';
+    }else{
+        gjf='%chk=molecule.chk\\n%mem=4GB\\n%nproc=4\\n# B3LYP/6-31G(d)\\n\\n'+(MD.title||'Modified structure')+'\\n\\n0 1\\n';
+    }
     MD.atoms.forEach(function(a){gjf+=' '+a.element+'   '+a.x.toFixed(6)+'   '+a.y.toFixed(6)+'   '+a.z.toFixed(6)+'\\n'});
     gjf+='\\n';
     MD.atoms.forEach(function(a,i){
@@ -762,6 +792,7 @@ function doSave(){
         if(parts.length>1){gjf+=parts.join(' ')+'\\n'}
     });
     gjf+='\\n';
+    if(meta&&meta.afterConnectContent){gjf+=meta.afterConnectContent+'\\n'}
     showModal('<h3>Save File</h3>'+
         '<label>Format:</label><select id="m-fmt"><option value="xyz">XYZ (.xyz)</option><option value="gjf">Gaussian Input (.gjf)</option></select>'+
         '<div class="modal-btns"><button class="mbtn mbtn-cancel" id="m-cancel">Cancel</button><button class="mbtn mbtn-ok" id="m-ok">Save</button></div>',null);
@@ -770,6 +801,52 @@ function doSave(){
         var content=fmt==='gjf'?gjf:xyz;
         var ext=fmt==='gjf'?'.gjf':'.xyz';
         vscodeApi.postMessage({command:'saveFile',content:content,suggestedName:'molecule_modified'+ext,filePath:MD.filePath||''});
+        hideModal();
+    });
+    document.getElementById('m-cancel').addEventListener('click',function(){hideModal()});
+}
+
+function showSelectAtomsModal(){
+    showModal('<h3>Select Atoms</h3>'+
+        '<div class="current-val">Enter indices (1-based), ranges (e.g. 3-10), or element symbols. Separate with spaces or commas.</div>'+
+        '<input type="text" id="m-sel-input" placeholder="e.g. 1 3-5 C H 8" style="width:100%;padding:6px 8px;background:var(--vscode-input-background,#3c3c3c);border:1px solid var(--vscode-input-border,#3c3c3c);color:var(--vscode-input-foreground,#ccc);border-radius:3px;font-size:12px">'+
+        '<div class="modal-btns"><button class="mbtn mbtn-cancel" id="m-cancel">Close</button><button class="mbtn mbtn-ok" id="m-ok">Select</button></div>',null);
+    var inputEl=document.getElementById('m-sel-input');
+    inputEl.focus();
+    inputEl.addEventListener('keydown',function(e){if(e.key==='Enter'){document.getElementById('m-ok').click()}});
+    document.getElementById('m-ok').addEventListener('click',function(){
+        var input=inputEl.value.trim();
+        if(!input){hideModal();return}
+        selectedAtoms=[];
+        var tokens=input.split(/[\s,;]+/);
+        tokens.forEach(function(tok){
+            if(!tok)return;
+            var rangeMatch=tok.match(/^(\d+)-(\d+)$/);
+            if(rangeMatch){
+                var start=parseInt(rangeMatch[1],10);
+                var end=parseInt(rangeMatch[2],10);
+                if(!isNaN(start)&&!isNaN(end)){
+                    for(var k=start;k<=end;k++){
+                        var idx=k-1;
+                        if(idx>=0&&idx<MD.atoms.length&&selectedAtoms.indexOf(idx)<0)selectedAtoms.push(idx);
+                    }
+                }
+                return;
+            }
+            var num=parseInt(tok,10);
+            if(!isNaN(num)&&num>0){
+                var idx2=num-1;
+                if(idx2<MD.atoms.length&&selectedAtoms.indexOf(idx2)<0)selectedAtoms.push(idx2);
+                return;
+            }
+            var el=tok.charAt(0).toUpperCase()+tok.slice(1).toLowerCase();
+            MD.atoms.forEach(function(a,i){
+                if(a.element===el&&selectedAtoms.indexOf(i)<0)selectedAtoms.push(i);
+            });
+        });
+        highlightSelected();
+        var names=selectedAtoms.map(function(i){return MD.atoms[i].element+(i+1)}).join(', ');
+        selInfoEl.textContent='Selected: '+names+' ('+selectedAtoms.length+' atoms)';
         hideModal();
     });
     document.getElementById('m-cancel').addEventListener('click',function(){hideModal()});

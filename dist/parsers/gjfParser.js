@@ -76,23 +76,34 @@ function parseGjf(content) {
     const bonds = [];
     let title = '';
     let hasExplicitBonds = false;
+    const link0Lines = [];
+    let routeLine = '';
+    const titleLines = [];
+    let chargeMultLine = '';
+    let afterConnectContent = '';
     let i = 0;
     while (i < lines.length && lines[i].trim() !== '') {
+        if (lines[i].trim().startsWith('%')) {
+            link0Lines.push(lines[i]);
+        }
+        else {
+            routeLine = lines[i].trim();
+        }
         i++;
     }
     while (i < lines.length && lines[i].trim() === '') {
         i++;
     }
-    const titleParts = [];
     while (i < lines.length && lines[i].trim() !== '') {
-        titleParts.push(lines[i].trim());
+        titleLines.push(lines[i]);
         i++;
     }
-    title = titleParts.join(' ');
+    title = titleLines.map(l => l.trim()).join(' ');
     while (i < lines.length && lines[i].trim() === '') {
         i++;
     }
     if (i < lines.length) {
+        chargeMultLine = lines[i];
         i++;
     }
     let atomIndex = 0;
@@ -109,10 +120,12 @@ function parseGjf(content) {
         }
         i++;
     }
+    let connectStartLine = -1;
     while (i < lines.length && lines[i].trim() === '') {
         i++;
     }
     if (i < lines.length) {
+        connectStartLine = i;
         let allNumeric = true;
         let lineCount = 0;
         let maxAtomNum = 0;
@@ -140,19 +153,45 @@ function parseGjf(content) {
         }
         if (allNumeric && lineCount > 0 && maxAtomNum <= atoms.length) {
             hasExplicitBonds = true;
+            let connectEndLine = i;
             for (let li = i; li < lines.length; li++) {
                 const tl = lines[li].trim();
-                if (tl === '' || tl.startsWith('--'))
+                if (tl === '' || tl.startsWith('--')) {
+                    connectEndLine = li;
                     break;
+                }
                 const cparts = tl.split(/\s+/);
                 const atom1Num = parseInt(cparts[0], 10);
-                if (atom1Num > atoms.length)
+                if (atom1Num > atoms.length) {
+                    connectEndLine = li;
                     break;
+                }
                 parseConnectLine(tl, atoms.length, bonds);
+                connectEndLine = li + 1;
+            }
+            let afterIdx = connectEndLine;
+            while (afterIdx < lines.length && lines[afterIdx].trim() === '') {
+                afterIdx++;
+            }
+            if (afterIdx < lines.length) {
+                afterConnectContent = lines.slice(afterIdx).join('\n');
             }
         }
+        else {
+            afterConnectContent = lines.slice(i).join('\n');
+        }
     }
-    return { atoms, bonds, title, hasExplicitBonds };
+    else if (i < lines.length) {
+        afterConnectContent = lines.slice(i).join('\n');
+    }
+    const gjfMeta = {
+        link0Lines,
+        routeLine,
+        titleLines,
+        chargeMultLine,
+        afterConnectContent
+    };
+    return { atoms, bonds, title, hasExplicitBonds, gjfMeta };
 }
 function parseConnectLine(line, totalAtoms, bonds) {
     const cparts = line.split(/\s+/);
